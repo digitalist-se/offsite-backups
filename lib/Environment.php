@@ -11,12 +11,28 @@ final class Environment
 
     public static function fromGlobals(): self
     {
-        return new self(getenv());
+        $vars = [];
+        foreach (getenv() as $k => $v) {
+            $vars[(string) $k] = (string) $v;
+        }
+        return new self($vars);
     }
 
     public function get(string $name): ?string
     {
         $value = $this->vars[$name] ?? null;
         return ($value === null || $value === '') ? null : $value;
+    }
+
+    /** @param array<string,string> $overrides */
+    public function with(array $overrides): self
+    {
+        return new self(array_merge($this->vars, $overrides));
+    }
+
+    /** @return array<string,string> */
+    public function all(): array
+    {
+        return $this->vars;
     }
 }
