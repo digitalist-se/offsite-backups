@@ -18,15 +18,17 @@ final class ProcessRunner
      * @param list<string>|string $command
      * @param array<string,string> $env  added on top of the inherited environment
      * @param callable(string):void|null $onStdout  when given, stdout is streamed here instead of captured
+     * @param callable(string):bool|null $abortOnStderr  receives the accumulated stderr; returning true stops the process
      */
-    public function run(array|string $command, array $env = [], ?string $input = null, ?int $timeout = 3600, ?callable $onStdout = null, ?string $cwd = null): ProcessResult
+    public function run(array|string $command, array $env = [], ?string $input = null, ?int $timeout = 3600, ?callable $onStdout = null, ?string $cwd = null, ?callable $abortOnStderr = null): ProcessResult
     {
         $process = is_array($command)
             ? new Process($command, $cwd, $env, $input, $timeout)
             : Process::fromShellCommandline($command, $cwd, $env, $input, $timeout);
         $stdout = '';
         $stderr = '';
-        $callback = static function (string $type, string $buffer) use (&$stdout, &$stderr, $onStdout): void {
+        $aborted = false;
+        $callback = static function (string $type, string $buffer) use (&$stdout, &$stderr, &$aborted, $process, $onStdout, $abortOnStderr): void {
             if ($type === Process::OUT) {
                 if ($onStdout !== null) {
                     $onStdout($buffer);
@@ -35,6 +37,11 @@ final class ProcessRunner
                 }
             } else {
                 $stderr .= $buffer;
+                // One shot: stop() drains the pipes and calls back here again.
+                if (!$aborted && $abortOnStderr !== null && $abortOnStderr($stderr)) {
+                    $aborted = true;
+                    $process->stop(0);
+                }
             }
         };
         try {
@@ -42,6 +49,9 @@ final class ProcessRunner
         } catch (ProcessTimedOutException $e) {
             // A hung external tool is a failure like any other, reported with its output so far.
             return new ProcessResult(124, $stdout, rtrim($stderr, "\n") . "\n" . sprintf('Process timed out after %d seconds', (int) ($timeout ?? 0)), $process->getCommandLine());
+        }
+        if ($aborted) {
+            return new ProcessResult($process->getExitCode() ?? 143, $stdout, rtrim($stderr, "\n") . "\nProcess aborted by the caller", $process->getCommandLine());
         }
         return new ProcessResult($process->getExitCode() ?? -1, $stdout, $stderr, $process->getCommandLine());
     }

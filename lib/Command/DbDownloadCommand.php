@@ -26,6 +26,7 @@ final class DbDownloadCommand extends BaseCommand
     {
         $repo = $config->repositoryUrl(Config::STORE_DB);
         $restic = $this->restic($config);
+        $restic->requireRepository($repo);
         $snapshot = SnapshotResolver::resolve($restic, $repo, $config->resticHost(), (string) $input->getArgument('snapshot'));
         $name = ltrim($snapshot->paths[0] ?? '', '/');
         if ($name === '') {

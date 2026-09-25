@@ -23,7 +23,9 @@ final class DbListCommand extends BaseCommand
     protected function runCommand(Config $config, Reporter $reporter, InputInterface $input, OutputInterface $output): int
     {
         $repo = $config->repositoryUrl(Config::STORE_DB);
-        $snapshots = $this->restic($config)->snapshots($repo, ['host' => $config->resticHost()]);
+        $restic = $this->restic($config);
+        $restic->requireRepository($repo);
+        $snapshots = $restic->snapshots($repo, ['host' => $config->resticHost()]);
         $rows = array_map(static fn ($s): array => [
             'id' => $s->id,
             'short_id' => $s->shortId,

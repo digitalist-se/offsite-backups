@@ -74,6 +74,23 @@ final class ResticTest extends IntegrationTestCase
         self::assertFileDoesNotExist($restoreDir . $files . '/css/agg.css');
     }
 
+    public function testMissingBucketCountsAsMissingRepositoryAndInitCreatesIt(): void
+    {
+        $restic = $this->restic();
+        $repo = sprintf('s3:%s/nope-%s/database', $this->s3Env()['host'], bin2hex(random_bytes(4)));
+        $started = microtime(true);
+        self::assertFalse($restic->repositoryExists($repo));
+        self::assertLessThan(30, microtime(true) - $started, 'restic would otherwise retry a missing bucket for 15 minutes');
+        try {
+            $restic->requireRepository($repo);
+            self::fail('expected ResticException');
+        } catch (ResticException $e) {
+            self::assertStringContainsString('run `offsite-backup init`', $e->getMessage());
+        }
+        $restic->init($repo);
+        self::assertTrue($restic->repositoryExists($repo));
+    }
+
     public function testWrongPasswordIsAnErrorNotAMissingRepository(): void
     {
         $repo = $this->repositoryUrl('database');

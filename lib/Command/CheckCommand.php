@@ -34,6 +34,7 @@ final class CheckCommand extends BaseCommand
             $repo = $config->repositoryUrl($store);
             $reporter->notice('Check started for {store}: {repo} (read-data-subset {subset})', ['store' => $store, 'repo' => $repo, 'subset' => $config->checkSubset]);
             try {
+                $restic->requireRepository($repo);
                 $restic->check($repo, $config->checkSubset);
                 $reporter->notice('Check passed for {store}', ['store' => $store]);
             } catch (ResticException $e) {

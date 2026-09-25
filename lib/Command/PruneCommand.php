@@ -41,6 +41,7 @@ final class PruneCommand extends BaseCommand
             $repo = $config->repositoryUrl($store);
             $reporter->notice('Retention started for {store}: {repo} keep daily={d} biweekly={b} monthly={m} dry_run={dry}', ['store' => $store, 'repo' => $repo, 'd' => $keep['daily'], 'b' => $keep['biweekly'], 'm' => $keep['monthly'], 'dry' => $dryRun ? 'yes' : 'no']);
             try {
+                $restic->requireRepository($repo);
                 $forgotten[$store] = 0;
                 foreach (BackupClass::ALL as $class) {
                     $n = $restic->forget($repo, $class, $config->resticHost(), $keep[$class], $dryRun);

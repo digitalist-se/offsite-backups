@@ -34,12 +34,23 @@ final class StatusCommand extends BaseCommand
         $rows = [];
         $staleReasons = [];
 
-        $db = $restic->snapshots($config->repositoryUrl(Config::STORE_DB), ['host' => $host, 'latest' => 1])[0] ?? null;
-        $rows[] = self::row('db', 'any', $db, $now, $maxAge, true, $staleReasons);
+        $dbRepo = $config->repositoryUrl(Config::STORE_DB);
+        if ($restic->repositoryExists($dbRepo)) {
+            $db = $restic->snapshots($dbRepo, ['host' => $host, 'latest' => 1])[0] ?? null;
+            $rows[] = self::row('db', 'any', $db, $now, $maxAge, true, $staleReasons);
+        } else {
+            $staleReasons[] = 'db: repository does not exist, run `offsite-backup init`';
+            $rows[] = self::row('db', 'any', null, $now, $maxAge, false, $staleReasons);
+        }
 
+        $filesRepo = $config->repositoryUrl(Config::STORE_FILES);
+        $filesExists = $restic->repositoryExists($filesRepo);
+        if (!$filesExists) {
+            $staleReasons[] = 'files: repository does not exist, run `offsite-backup init`';
+        }
         foreach (BackupClass::ALL as $class) {
-            $snap = $restic->snapshots($config->repositoryUrl(Config::STORE_FILES), ['host' => $host, 'tag' => $class, 'latest' => 1])[0] ?? null;
-            $rows[] = self::row('files', $class, $snap, $now, $maxAge, $class === BackupClass::DAILY, $staleReasons);
+            $snap = $filesExists ? ($restic->snapshots($filesRepo, ['host' => $host, 'tag' => $class, 'latest' => 1])[0] ?? null) : null;
+            $rows[] = self::row('files', $class, $snap, $now, $maxAge, $filesExists && $class === BackupClass::DAILY, $staleReasons);
         }
 
         $stale = $staleReasons !== [];

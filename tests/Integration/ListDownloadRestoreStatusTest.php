@@ -101,6 +101,14 @@ final class ListDownloadRestoreStatusTest extends IntegrationTestCase
         self::assertStringContainsString('STALE', $status->getDisplay());
     }
 
+    public function testStatusReportsAMissingRepositoryAsStale(): void
+    {
+        $app = new Application($this->projectRoot, $this->environment(['OFFSITE_BACKUP_DB_REPO' => 'not-initialised']));
+        $status = new CommandTester($app->find('status'));
+        self::assertSame(2, $status->execute([]));
+        self::assertStringContainsString('db: repository does not exist', $status->getDisplay());
+    }
+
     public function testStatusIsStaleWithoutAnyDatabaseSnapshot(): void
     {
         $status = new CommandTester($this->app->find('status'));

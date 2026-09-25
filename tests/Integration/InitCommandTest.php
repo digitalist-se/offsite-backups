@@ -11,6 +11,17 @@ use Symfony\Component\Console\Tester\CommandTester;
 
 final class InitCommandTest extends IntegrationTestCase
 {
+    public function testInitCreatesTheBucketWhenItDoesNotExist(): void
+    {
+        $bucket = 'fresh-' . bin2hex(random_bytes(4));
+        $app = new Application($this->projectRoot, $this->environment(['AWS_BUCKET' => $bucket]));
+        $init = new CommandTester($app->find('init'));
+        $started = microtime(true);
+        self::assertSame(0, $init->execute(['store' => 'db']), $init->getDisplay());
+        self::assertLessThan(60, microtime(true) - $started);
+        self::assertStringContainsString("Initialised repository s3:{$this->s3Env()['host']}/$bucket/database", $init->getDisplay());
+    }
+
     public function testInitIsIdempotentAndConfigCheckPassesAfterwards(): void
     {
         $app = new Application($this->projectRoot, $this->environment(['OFFSITE_BACKUP_DRUSH_BIN' => __DIR__ . '/../Support/fake-drush.php']));

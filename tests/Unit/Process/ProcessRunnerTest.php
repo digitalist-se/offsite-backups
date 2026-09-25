@@ -42,6 +42,16 @@ final class ProcessRunnerTest extends TestCase
         self::assertStringContainsString('timed out after 1 seconds', $result->stderr);
     }
 
+    public function testAbortOnStderrStopsTheProcessEarly(): void
+    {
+        $started = microtime(true);
+        $result = (new ProcessRunner())->run(['sh', '-c', 'echo "bucket does not exist" >&2; sleep 30'], [], null, 60, null, null, static fn (string $stderr): bool => str_contains($stderr, 'does not exist'));
+        self::assertLessThan(10, microtime(true) - $started, 'aborted long before the sleep ended');
+        self::assertFalse($result->ok());
+        self::assertStringContainsString('bucket does not exist', $result->stderr);
+        self::assertStringContainsString('aborted', $result->stderr);
+    }
+
     public function testTailReturnsLastLines(): void
     {
         $result = (new ProcessRunner())->run(['sh', '-c', 'seq 1 30']);

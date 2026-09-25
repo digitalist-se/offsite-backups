@@ -32,6 +32,7 @@ final class DbBackupCommand extends BaseCommand
         $localFile = $config->localDir . '/' . $name . '.gz';
         $repo = $config->repositoryUrl(Config::STORE_DB);
         $restic = $this->restic($config);
+        $restic->requireRepository($repo);
 
         $this->prepareLocalDir($config->localDir, $reporter);
         $reporter->notice('Backup started. file={file} tag={tag} project={project} env={env}', ['file' => $localFile, 'tag' => $class, 'project' => $config->project, 'env' => $config->environment]);

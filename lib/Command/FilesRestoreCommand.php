@@ -31,6 +31,7 @@ final class FilesRestoreCommand extends BaseCommand
         $target = rtrim($config->absolutePath($targetOption), '/');
         $repo = $config->repositoryUrl(Config::STORE_FILES);
         $restic = $this->restic($config);
+        $restic->requireRepository($repo);
         $snapshot = SnapshotResolver::resolve($restic, $repo, $config->resticHost(), (string) $input->getOption('snapshot'));
         $path = $input->getOption('path');
         $path = is_string($path) && $path !== '' ? rtrim($path, '/') : rtrim($snapshot->paths[0] ?? '', '/');

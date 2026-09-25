@@ -97,6 +97,16 @@ final class DbBackupCommandTest extends IntegrationTestCase
         self::assertSame('failure', end($records)['stdin']['state']['offsite_backup.run.db_backup']['outcome']);
     }
 
+    public function testMissingRepositoryFailsFastWithAHintAndDumpsNothing(): void
+    {
+        $tester = new CommandTester($this->app(['OFFSITE_BACKUP_DB_REPO' => 'not-initialised'])->find('db:backup'));
+        $started = microtime(true);
+        self::assertSame(1, $tester->execute([]));
+        self::assertLessThan(60, microtime(true) - $started);
+        self::assertStringContainsString('run `offsite-backup init`', $tester->getDisplay());
+        self::assertStringNotContainsString('DB dump started', $tester->getDisplay());
+    }
+
     public function testLeftoverDumpsOlderThanADayAreRemovedFirst(): void
     {
         if (!is_dir($this->projectRoot . '/backups')) {

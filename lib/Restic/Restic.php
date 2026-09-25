@@ -41,9 +41,9 @@ final class Restic
     }
 
     /** @param list<string> $args */
-    public function tryRun(string $repositoryUrl, array $args, ?callable $onStdout = null, ?int $timeout = 7200): ProcessResult
+    public function tryRun(string $repositoryUrl, array $args, ?callable $onStdout = null, ?int $timeout = 7200, ?callable $abortOnStderr = null): ProcessResult
     {
-        return $this->runner->run(array_merge([$this->bin], $args), $this->environment($repositoryUrl), null, $timeout, $onStdout);
+        return $this->runner->run(array_merge([$this->bin], $args), $this->environment($repositoryUrl), null, $timeout, $onStdout, null, $abortOnStderr);
     }
 
     /** @param list<string> $args */
@@ -65,22 +65,31 @@ final class Restic
         return $m[1];
     }
 
+    private const MISSING_PATTERN = '/Is there a repository at the following location|bucket does not exist|NoSuchBucket/i';
+
+    /**
+     * False when the repository, or the bucket holding it, does not exist.
+     * restic retries a missing bucket with backoff for up to 15 minutes, so the
+     * probe is aborted as soon as restic reports it, and capped at one minute.
+     */
     public function repositoryExists(string $repositoryUrl): bool
     {
-        // restic retries a missing bucket with backoff for up to 15 minutes; a
-        // missing repository inside an existing bucket fails fast. Cap the wait
-        // so a wrong bucket name surfaces as an error within a minute.
-        $result = $this->tryRun($repositoryUrl, ['cat', 'config'], null, 60);
+        $result = $this->tryRun($repositoryUrl, ['cat', 'config'], null, 60, static fn (string $stderr): bool => preg_match(self::MISSING_PATTERN, $stderr) === 1);
         if ($result->ok()) {
             return true;
         }
-        if (preg_match('/Is there a repository at the following location/i', $result->stderr) === 1) {
+        if (preg_match(self::MISSING_PATTERN, $result->stderr) === 1) {
             return false;
         }
-        if (preg_match('/bucket does not exist|NoSuchBucket/i', $result->stderr) === 1) {
-            throw new ResticException('Bucket for ' . $repositoryUrl . ' does not exist or is not reachable: ' . $result->tail(3));
-        }
         throw new ResticException('Cannot access repository ' . $repositoryUrl . ': ' . $result->tail(5));
+    }
+
+    /** Guard for every command but init: fail in seconds instead of letting restic retry for 15 minutes. */
+    public function requireRepository(string $repositoryUrl): void
+    {
+        if (!$this->repositoryExists($repositoryUrl)) {
+            throw new ResticException("Repository $repositoryUrl does not exist (bucket or repository missing); run `offsite-backup init`");
+        }
     }
 
     public function init(string $repositoryUrl): void
