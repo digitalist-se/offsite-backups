@@ -25,6 +25,7 @@ final class Application extends ConsoleApplication
             new Command\DbDownloadCommand(),
             new Command\FilesRestoreCommand(),
             new Command\StatusCommand(),
+            new Command\ToolsInstallCommand(),
         ]);
     }
 
