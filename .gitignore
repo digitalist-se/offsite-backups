@@ -2,3 +2,4 @@
 /.phpunit.cache/
 /.ddev/db_snapshots/
 /.tools/
+/.phpunit.result.cache
