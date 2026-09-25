@@ -17,6 +17,7 @@ final class Application extends ConsoleApplication
         $this->addCommands([
             new Command\InitCommand(),
             new Command\ConfigCheckCommand(),
+            new Command\DbBackupCommand(),
         ]);
     }
 

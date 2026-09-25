@@ -85,7 +85,8 @@ abstract class IntegrationTestCase extends TestCase
     protected function environment(array $env = []): Environment
     {
         $s3 = $this->s3Env();
-        return new Environment([
+        // Overrides win over the defaults below.
+        return new Environment($env + [
             'AWS_HOST' => $s3['host'],
             'AWS_BUCKET' => $s3['bucket'],
             'AWS_ACCESS_KEY_ID' => $s3['key'],
@@ -96,6 +97,6 @@ abstract class IntegrationTestCase extends TestCase
             'OFFSITE_BACKUP_RESTIC_BIN' => $this->resticBin(),
             'OFFSITE_BACKUP_LOG_DRUPAL' => '0',
             'PLATFORM_ENVIRONMENT_TYPE' => 'production',
-        ] + $env);
+        ]);
     }
 }

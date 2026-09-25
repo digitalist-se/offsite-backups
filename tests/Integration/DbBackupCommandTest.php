@@ -1,0 +1,112 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Digitalist\OffsiteBackup\Tests\Integration;
+
+use Digitalist\OffsiteBackup\Application;
+use Digitalist\OffsiteBackup\Tests\Support\IntegrationTestCase;
+use Digitalist\OffsiteBackup\Tests\Support\TestEnv;
+use Symfony\Component\Console\Tester\CommandTester;
+
+final class DbBackupCommandTest extends IntegrationTestCase
+{
+    /** @param array<string,string> $env */
+    private function app(array $env = []): Application
+    {
+        return new Application($this->projectRoot, $this->environment([
+            'OFFSITE_BACKUP_DB_DUMP_COMMAND' => __DIR__ . '/../Support/fake-dump.sh --result-file={file} --structure-tables-list={structure_tables}',
+            'OFFSITE_BACKUP_DB_MIN_BYTES' => '100',
+            'OFFSITE_BACKUP_LOG_DRUPAL' => '1',
+            'OFFSITE_BACKUP_DRUSH_BIN' => __DIR__ . '/../Support/fake-drush.php',
+        ] + $env));
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        TestEnv::set('FAKE_DRUSH_OUT', $this->projectRoot . '/drush.log');
+        TestEnv::unset('FAKE_DRUSH_FAIL');
+        TestEnv::unset('FAKE_DUMP_TRUNCATE');
+        $this->restic()->init($this->repositoryUrl('database'));
+    }
+
+    protected function tearDown(): void
+    {
+        TestEnv::unset('FAKE_DRUSH_OUT');
+        TestEnv::unset('FAKE_DUMP_TRUNCATE');
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function drushRecords(): array
+    {
+        return array_values(array_map(static fn (string $l): array => json_decode($l, true), array_filter(explode("\n", (string) file_get_contents($this->projectRoot . '/drush.log')))));
+    }
+
+    public function testBackupStoresVerifiesAndHandsOverToDrupal(): void
+    {
+        $tester = new CommandTester($this->app()->find('db:backup'));
+        $code = $tester->execute([]);
+        $display = $tester->getDisplay();
+        self::assertSame(0, $code, $display);
+
+        $today = (new \DateTimeImmutable())->format('Y-m-d');
+        self::assertMatchesRegularExpression("/Backup process finished successfully: $today-proj-main\\.sql \\(snapshot [0-9a-f]{8}\\)/", $display);
+        $snapshots = $this->restic()->snapshots($this->repositoryUrl('database'), ['host' => 'proj-main']);
+        self::assertCount(1, $snapshots);
+        self::assertSame(["/$today-proj-main.sql"], $snapshots[0]->paths);
+        self::assertContains($snapshots[0]->tags[0], ['daily', 'biweekly', 'monthly']);
+        self::assertFileDoesNotExist($this->projectRoot . "/backups/$today-proj-main.sql.gz", 'local dump removed');
+        self::assertFileExists($this->projectRoot . '/backups/db-backup.lock');
+
+        $records = $this->drushRecords();
+        $last = end($records);
+        $state = $last['stdin']['state']['offsite_backup.run.db_backup'];
+        self::assertSame('success', $state['outcome']);
+        self::assertSame("$today-proj-main.sql", $state['details']['name']);
+        self::assertSame($snapshots[0]->shortId, $state['details']['snapshot']);
+        self::assertSame(40, $state['details']['tables']);
+        self::assertSame('Backup started. file=' . $this->projectRoot . "/backups/$today-proj-main.sql.gz tag={$snapshots[0]->tags[0]} project=proj env=main", $records[0]['stdin']['log'][0]['message']);
+    }
+
+    public function testSkippedOutsideEnabledEnvironmentTypesUnlessForced(): void
+    {
+        $app = $this->app(['PLATFORM_ENVIRONMENT_TYPE' => 'development']);
+        $tester = new CommandTester($app->find('db:backup'));
+        self::assertSame(0, $tester->execute([]));
+        self::assertStringContainsString('skipped (environment type "development")', $tester->getDisplay());
+        self::assertSame([], $this->restic()->snapshots($this->repositoryUrl('database')));
+        self::assertFileDoesNotExist($this->projectRoot . '/drush.log', 'skipped runs are not handed to Drupal');
+
+        self::assertSame(0, $tester->execute(['--force' => true]));
+        self::assertCount(1, $this->restic()->snapshots($this->repositoryUrl('database')));
+    }
+
+    public function testTruncatedDumpFailsBeforeUploadAndNotifies(): void
+    {
+        TestEnv::set('FAKE_DUMP_TRUNCATE', '1');
+        $tester = new CommandTester($this->app()->find('db:backup'));
+        self::assertSame(1, $tester->execute([]));
+        self::assertStringContainsString("does not end with the '-- Dump completed on' trailer", $tester->getDisplay());
+        self::assertSame([], $this->restic()->snapshots($this->repositoryUrl('database')), 'nothing uploaded');
+        $today = (new \DateTimeImmutable())->format('Y-m-d');
+        self::assertFileDoesNotExist($this->projectRoot . "/backups/$today-proj-main.sql.gz", 'local dump removed on failure too');
+        $records = $this->drushRecords();
+        $levels = array_merge(...array_map(static fn (array $r): array => array_column($r['stdin']['log'], 'level'), $records));
+        self::assertContains('error', $levels);
+        self::assertSame('failure', end($records)['stdin']['state']['offsite_backup.run.db_backup']['outcome']);
+    }
+
+    public function testLeftoverDumpsOlderThanADayAreRemovedFirst(): void
+    {
+        if (!is_dir($this->projectRoot . '/backups')) {
+            mkdir($this->projectRoot . '/backups', 0700, true);
+        }
+        $old = $this->projectRoot . '/backups/2020-01-01-proj-main.sql.gz';
+        touch($old, time() - 2 * 86400);
+        $tester = new CommandTester($this->app()->find('db:backup'));
+        self::assertSame(0, $tester->execute([]));
+        self::assertFileDoesNotExist($old);
+        self::assertStringContainsString('Removed stale local file', $tester->getDisplay());
+    }
+}
