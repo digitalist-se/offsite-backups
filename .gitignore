@@ -1,0 +1,4 @@
+/vendor/
+/.phpunit.cache/
+/.ddev/db_snapshots/
+/.tools/

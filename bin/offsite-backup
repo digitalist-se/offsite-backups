@@ -1,0 +1,24 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Digitalist\OffsiteBackup\Application;
+use Digitalist\OffsiteBackup\Environment;
+
+$autoload = $GLOBALS['_composer_autoload_path'] ?? null;
+if ($autoload === null) {
+    foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../../vendor/autoload.php', __DIR__ . '/../../../../../vendor/autoload.php'] as $candidate) {
+        if (is_file($candidate)) {
+            $autoload = $candidate;
+            break;
+        }
+    }
+}
+if ($autoload === null) {
+    fwrite(STDERR, "Composer autoloader not found; run composer install.\n");
+    exit(1);
+}
+require $autoload;
+
+exit((new Application(Application::detectProjectRoot(), Environment::fromGlobals()))->run());

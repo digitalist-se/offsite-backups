@@ -1,0 +1,17 @@
+# S3-compatible object store for the integration tests (restic's S3 backend).
+services:
+  s3:
+    image: versity/versitygw:v1.8.0
+    container_name: ddev-${DDEV_SITENAME}-s3
+    command: posix /data
+    environment:
+      ROOT_ACCESS_KEY: testkey
+      ROOT_SECRET_KEY: testsecret12345
+    labels:
+      com.ddev.site-name: ${DDEV_SITENAME}
+      com.ddev.approot: $DDEV_APPROOT
+    volumes:
+      - s3data:/data
+      - ".:/mnt/ddev_config"
+volumes:
+  s3data:
