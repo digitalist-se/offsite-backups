@@ -19,6 +19,8 @@ final class Application extends ConsoleApplication
             new Command\ConfigCheckCommand(),
             new Command\DbBackupCommand(),
             new Command\FilesBackupCommand(),
+            new Command\PruneCommand(),
+            new Command\CheckCommand(),
         ]);
     }
 
