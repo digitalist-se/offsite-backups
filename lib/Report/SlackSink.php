@@ -35,14 +35,22 @@ final class SlackSink implements Sink
         }
         $body = (string) json_encode(self::payload($report, $this->channel), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $context = stream_context_create(['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\n", 'content' => $body, 'timeout' => 10, 'ignore_errors' => true]]);
-        $response = @file_get_contents($this->webhookUrl, false, $context);
+        $stream = @fopen($this->webhookUrl, 'r', false, $context);
+        if ($stream === false) {
+            $this->output->writeln(sprintf('<comment>Slack notification to %s failed (no connection).</comment>', $host));
+            return;
+        }
+        $meta = stream_get_meta_data($stream);
+        stream_get_contents($stream);
+        fclose($stream);
         $status = 0;
-        foreach ($http_response_header ?? [] as $header) {
-            if (preg_match('#^HTTP/\S+ (\d{3})#', $header, $m) === 1) {
+        $headers = is_array($meta['wrapper_data'] ?? null) ? $meta['wrapper_data'] : [];
+        foreach ($headers as $header) {
+            if (is_string($header) && preg_match('#^HTTP/\S+ (\d{3})#', $header, $m) === 1) {
                 $status = (int) $m[1];
             }
         }
-        if ($response === false || $status < 200 || $status >= 300) {
+        if ($status < 200 || $status >= 300) {
             $this->output->writeln(sprintf('<comment>Slack notification to %s failed (HTTP %d).</comment>', $host, $status));
         }
     }

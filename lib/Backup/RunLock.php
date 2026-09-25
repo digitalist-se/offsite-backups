@@ -8,7 +8,7 @@ namespace Digitalist\OffsiteBackup\Backup;
 final class RunLock
 {
     /** @param resource $handle */
-    private function __construct(private $handle, private readonly string $path) {}
+    private function __construct(private $handle) {}
 
     public static function acquire(string $dir, string $name): self
     {
@@ -29,7 +29,7 @@ final class RunLock
         rewind($handle);
         fwrite($handle, sprintf('since %s pid %d', (new \DateTimeImmutable())->format(DATE_ATOM), getmypid()));
         fflush($handle);
-        return new self($handle, $path);
+        return new self($handle);
     }
 
     public function release(): void

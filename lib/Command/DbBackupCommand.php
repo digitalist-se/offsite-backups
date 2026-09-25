@@ -61,7 +61,7 @@ final class DbBackupCommand extends BaseCommand
 
             $snapshot = $restic->snapshots($repo, ['tag' => $class, 'host' => $config->resticHost(), 'latest' => 1])[0] ?? null;
             if ($snapshot === null || $snapshot->id !== $summary->snapshotId || $snapshot->time < $now->modify('-60 seconds') || !in_array('/' . $name, $snapshot->paths, true)) {
-                throw new \RuntimeException(sprintf('Verification failed: latest %s snapshot for host %s is %s, expected %s with path /%s created after %s', $class, $config->resticHost(), $snapshot?->shortId ?? 'none', substr($summary->snapshotId, 0, 8), $name, $now->format(DATE_ATOM)));
+                throw new \RuntimeException(sprintf('Verification failed: latest %s snapshot for host %s is %s, expected %s with path /%s created after %s', $class, $config->resticHost(), $snapshot !== null ? $snapshot->shortId : 'none', substr($summary->snapshotId, 0, 8), $name, $now->format(DATE_ATOM)));
             }
             $reporter->notice('Verification succeeded: snapshot {short} created {time} path {path}', ['short' => $snapshot->shortId, 'time' => $snapshot->time->format(DATE_ATOM), 'path' => $snapshot->paths[0]]);
 

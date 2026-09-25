@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup DDEV
+        uses: ddev/github-action-setup-ddev@v1
+        with:
+          version: 1.25.0
+
+      - name: Start
+        run: ddev start -y
+
+      - name: Install dependencies
+        run: ddev composer install --no-progress --no-interaction
+
+      - name: Install pinned restic through the package itself
+        run: ddev exec bin/offsite-backup tools:install --dir=/tmp/tools
+
+      - name: PHPStan
+        run: ddev exec vendor/bin/phpstan analyse --no-progress
+
+      - name: PHPUnit (unit + integration against the S3 container)
+        run: ddev exec vendor/bin/phpunit

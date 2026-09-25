@@ -42,7 +42,7 @@ final class FilesBackupCommand extends BaseCommand
         $snapshot = $restic->snapshots($repo, ['tag' => $class, 'host' => $config->resticHost(), 'latest' => 1])[0] ?? null;
         $missing = $snapshot === null ? $paths : array_diff($paths, array_map(static fn (string $p): string => rtrim($p, '/'), $snapshot->paths));
         if ($snapshot === null || $snapshot->id !== $summary->snapshotId || $snapshot->time < $now->modify('-60 seconds') || $missing !== []) {
-            throw new \RuntimeException(sprintf('Verification failed: latest %s snapshot for host %s is %s (expected %s created after %s covering %s)', $class, $config->resticHost(), $snapshot?->shortId ?? 'none', substr($summary->snapshotId, 0, 8), $now->format(DATE_ATOM), implode(',', $paths)));
+            throw new \RuntimeException(sprintf('Verification failed: latest %s snapshot for host %s is %s (expected %s created after %s covering %s)', $class, $config->resticHost(), $snapshot !== null ? $snapshot->shortId : 'none', substr($summary->snapshotId, 0, 8), $now->format(DATE_ATOM), implode(',', $paths)));
         }
         $reporter->notice('Verification succeeded: snapshot {short} created {time}', ['short' => $snapshot->shortId, 'time' => $snapshot->time->format(DATE_ATOM)]);
 
