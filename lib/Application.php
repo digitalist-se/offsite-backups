@@ -21,6 +21,10 @@ final class Application extends ConsoleApplication
             new Command\FilesBackupCommand(),
             new Command\PruneCommand(),
             new Command\CheckCommand(),
+            new Command\DbListCommand(),
+            new Command\DbDownloadCommand(),
+            new Command\FilesRestoreCommand(),
+            new Command\StatusCommand(),
         ]);
     }
 
