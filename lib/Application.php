@@ -14,6 +14,10 @@ final class Application extends ConsoleApplication
     public function __construct(private readonly string $projectRoot, private readonly Environment $env)
     {
         parent::__construct('offsite-backup', self::VERSION);
+        $this->addCommands([
+            new Command\InitCommand(),
+            new Command\ConfigCheckCommand(),
+        ]);
     }
 
     public function getProjectRoot(): string

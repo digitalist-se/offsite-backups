@@ -23,6 +23,12 @@ final class DrupalSinkTest extends TestCase
         TestEnv::unset('FAKE_DRUSH_FAIL');
     }
 
+    protected function tearDown(): void
+    {
+        TestEnv::unset('FAKE_DRUSH_FAIL');
+        TestEnv::unset('FAKE_DRUSH_OUT');
+    }
+
     private function sink(BufferedOutput $output): DrupalSink
     {
         return new DrupalSink(new ProcessRunner(), __DIR__ . '/../../Support/fake-drush.php', '/tmp/web', 'offsite-backup', 'offsite_backup.run.db_backup', $output);
