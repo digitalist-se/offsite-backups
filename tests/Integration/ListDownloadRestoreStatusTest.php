@@ -101,6 +101,21 @@ final class ListDownloadRestoreStatusTest extends IntegrationTestCase
         self::assertStringContainsString('STALE', $status->getDisplay());
     }
 
+    public function testStatusIsFreshWhenTheNewestFilesSnapshotIsMonthlyOrBiweekly(): void
+    {
+        // On the 1st and 15th the nightly files snapshot is tagged monthly/biweekly, not daily.
+        $restic = $this->restic();
+        $restic->backupFromShell($this->repositoryUrl('database'), 'printf "%s" "$C"', ['C' => 'x'], 'd.sql', 'monthly', 'proj-main');
+        $dir = $this->projectRoot . '/f';
+        mkdir($dir);
+        file_put_contents("$dir/a", 'a');
+        $restic->backupPaths($this->repositoryUrl('public-files'), [$dir], [], 'monthly', 'proj-main');
+
+        $status = new CommandTester($this->app->find('status'));
+        self::assertSame(0, $status->execute([]), $status->getDisplay());
+        self::assertStringContainsString('OK: newest snapshots are within', $status->getDisplay());
+    }
+
     public function testStatusReportsAMissingRepositoryAsStale(): void
     {
         $app = new Application($this->projectRoot, $this->environment(['OFFSITE_BACKUP_DB_REPO' => 'not-initialised']));

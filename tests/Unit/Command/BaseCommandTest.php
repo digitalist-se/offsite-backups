@@ -41,6 +41,19 @@ final class BaseCommandTest extends TestCase
         self::assertStringContainsString('s3.bucket (AWS_BUCKET)', $tester->getDisplay());
     }
 
+    public function testGatedCommandSkipsBeforeValidatingSecrets(): void
+    {
+        // No secrets at all: a cron on a non-production environment must still exit 0 with "skipped".
+        $app = new Application(TempDir::create(), new Environment(['PLATFORM_ENVIRONMENT_TYPE' => 'development']));
+        $tester = new CommandTester($app->find('db:backup'));
+        self::assertSame(0, $tester->execute([]));
+        self::assertStringContainsString('skipped (environment type "development")', $tester->getDisplay());
+
+        $tester = new CommandTester((new Application(TempDir::create(), new Environment([])))->find('prune'));
+        self::assertSame(0, $tester->execute([]));
+        self::assertStringContainsString('skipped (environment type "unset")', $tester->getDisplay());
+    }
+
     public function testReadEnvFromStdinCastsScalars(): void
     {
         self::assertSame(['A' => '1', 'B' => 'x', 'C' => ''], BaseCommand::readEnvFromStdin('{"A": 1, "B": "x", "C": null}'));

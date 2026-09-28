@@ -45,12 +45,18 @@ final class StatusCommand extends BaseCommand
 
         $filesRepo = $config->repositoryUrl(Config::STORE_FILES);
         $filesExists = $restic->repositoryExists($filesRepo);
-        if (!$filesExists) {
+        if ($filesExists) {
+            // Freshness is judged on the newest snapshot of any class: on the 1st
+            // and 15th the nightly snapshot is monthly or biweekly, not daily.
+            $newest = $restic->snapshots($filesRepo, ['host' => $host, 'latest' => 1])[0] ?? null;
+            $rows[] = self::row('files', 'any', $newest, $now, $maxAge, true, $staleReasons);
+        } else {
             $staleReasons[] = 'files: repository does not exist, run `offsite-backup init`';
+            $rows[] = self::row('files', 'any', null, $now, $maxAge, false, $staleReasons);
         }
         foreach (BackupClass::ALL as $class) {
             $snap = $filesExists ? ($restic->snapshots($filesRepo, ['host' => $host, 'tag' => $class, 'latest' => 1])[0] ?? null) : null;
-            $rows[] = self::row('files', $class, $snap, $now, $maxAge, $filesExists && $class === BackupClass::DAILY, $staleReasons);
+            $rows[] = self::row('files', $class, $snap, $now, $maxAge, false, $staleReasons);
         }
 
         $stale = $staleReasons !== [];

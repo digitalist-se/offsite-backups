@@ -7,6 +7,8 @@ namespace Digitalist\OffsiteBackup\Config;
 /**
  * The settings table. Keys are the offsite-backup.yml keys (dot notation).
  * Type 'secret' means environment only; the loader rejects it in the file.
+ * database.dump_command: {file} is the dump path WITHOUT ".gz" (Drush appends
+ * it with --gzip); a custom command must write {file}.gz.
  */
 final class Settings
 {

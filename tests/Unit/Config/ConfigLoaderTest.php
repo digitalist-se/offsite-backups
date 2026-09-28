@@ -63,6 +63,18 @@ final class ConfigLoaderTest extends TestCase
         self::assertSame($this->root . '/offsite-backup.yml', $resolved->configFile);
     }
 
+    public function testEnvironmentPrefersTheBranchNameOverThePlatformEnvironmentId(): void
+    {
+        // On Upsun PLATFORM_ENVIRONMENT is an id such as "main-bvxea6i"; PLATFORM_BRANCH is "main".
+        $env = new Environment($this->secrets() + ['AWS_HOST' => 'h', 'AWS_BUCKET' => 'b', 'PLATFORM_PROJECT' => 'p', 'PLATFORM_BRANCH' => 'main', 'PLATFORM_ENVIRONMENT' => 'main-bvxea6i']);
+        $config = (new ConfigLoader($this->root, $env))->load();
+        self::assertSame('main', $config->environment);
+        self::assertSame('p-main', $config->resticHost());
+
+        $env = new Environment($this->secrets() + ['AWS_HOST' => 'h', 'AWS_BUCKET' => 'b', 'PLATFORM_PROJECT' => 'p', 'PLATFORM_ENVIRONMENT' => 'stage']);
+        self::assertSame('stage', (new ConfigLoader($this->root, $env))->load()->environment, 'Platform.sh without PLATFORM_BRANCH falls back');
+    }
+
     public function testMissingRequiredValuesAreReportedTogether(): void
     {
         $loader = new ConfigLoader($this->root, new Environment([]));

@@ -52,8 +52,19 @@ abstract class BaseCommand extends Command
         if ($env === null) {
             return 1;
         }
+        $loader = $this->loader($env, $input);
         try {
-            $config = $this->loader($env, $input)->load();
+            if ($this->isGated() && !$input->getOption('force')) {
+                // Decide the gate before requiring secrets: a cron on a non-production
+                // environment without variables must still exit 0 with "skipped".
+                $type = $env->get('PLATFORM_ENVIRONMENT_TYPE');
+                $enabled = $loader->resolve()->values['environment_types'];
+                if ($type === null || !in_array($type, (array) $enabled, true)) {
+                    $output->writeln(sprintf('skipped (environment type "%s")', $type ?? 'unset'));
+                    return 0;
+                }
+            }
+            $config = $loader->load();
         } catch (ConfigException $e) {
             $output->writeln('<error>' . $e->getMessage() . '</error>');
             return 1;
@@ -64,13 +75,6 @@ abstract class BaseCommand extends Command
         $lock = null;
 
         if ($this->isGated()) {
-            $type = $env->get('PLATFORM_ENVIRONMENT_TYPE');
-            if (!$input->getOption('force') && !$config->isEnabledEnvironmentType($type)) {
-                $reason = sprintf('environment type "%s"', $type ?? 'unset');
-                $output->writeln("skipped ($reason)");
-                $report->skip($reason);
-                return 0;
-            }
             try {
                 $lock = RunLock::acquire($config->localDir, (string) $this->getName());
             } catch (LockException $e) {

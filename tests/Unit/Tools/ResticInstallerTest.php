@@ -56,6 +56,25 @@ final class ResticInstallerTest extends TestCase
         self::assertStringContainsString('already installed', implode("\n", $log));
     }
 
+    public function testWorksWhenAllowUrlFopenIsDisabled(): void
+    {
+        // Build images may disable allow_url_fopen; the download must not rely on PHP's http wrapper.
+        $dir = TempDir::create();
+        $code = sprintf(
+            'require %s; $i = new %s(new %s(), %s, %s, "0.19.1", ["127.0.0.1"]); echo $i->install(%s, false, static function (string $m): void {});',
+            var_export(dirname(__DIR__, 3) . '/vendor/autoload.php', true),
+            ResticInstaller::class,
+            ProcessRunner::class,
+            var_export("http://127.0.0.1:{$this->port}/restic.bz2", true),
+            var_export($this->sha, true),
+            var_export($dir, true),
+        );
+        $result = (new ProcessRunner())->run(['php', '-d', 'allow_url_fopen=0', '-r', $code], [], null, 60);
+        self::assertTrue($result->ok(), $result->tail(5));
+        self::assertSame("$dir/restic", trim($result->stdout));
+        self::assertTrue(is_executable("$dir/restic"));
+    }
+
     public function testChecksumMismatchLeavesNothingBehind(): void
     {
         $dir = TempDir::create();

@@ -24,8 +24,8 @@ works without enabling anything.
 
 `offsite-backup.yml` at the project root, next to `composer.json`. Everything
 has a default except `project`, `environment`, `s3.host` and `s3.bucket`;
-`project` and `environment` default to `PLATFORM_PROJECT` and
-`PLATFORM_ENVIRONMENT`.
+`project` defaults to `PLATFORM_PROJECT` and `environment` to `PLATFORM_BRANCH`
+(the branch name), falling back to `PLATFORM_ENVIRONMENT`.
 
 ```yaml
 project: site
@@ -53,7 +53,7 @@ expressed in the file (for example `database: {structure_tables: []}`).
 | `repositories.database` / `repositories.files` | `database` / `public-files` |
 | `restic.host` | `{project}-{environment}` |
 | `restic.bin`, `restic.cache_dir` | `restic`, `{local_dir}/restic-cache` |
-| `database.dump_command` | `{drush} sql:dump --gzip --result-file={file} --structure-tables-list={structure_tables}` |
+| `database.dump_command` | `{drush} sql:dump --gzip --result-file={file} --structure-tables-list={structure_tables}`; `{file}` has no `.gz`, the command must write `{file}.gz` (Drush does with `--gzip`) |
 | `database.structure_tables` | `[cache, cache_*]` |
 | `database.min_bytes` | `1048576` |
 | `drush.bin`, `drush.root` | `vendor/bin/drush`, `web` |
@@ -80,6 +80,9 @@ expressed in the file (for example `database: {structure_tables: []}`).
 | `status [--max-age=26h] [--json]` | ages of the newest snapshots; exit 2 when stale |
 | `config:check` | settings with sources, binaries, repository access |
 | `tools:install --dir=DIR` | install the pinned restic (SHA-256 verified) |
+
+The gate is decided before secrets are validated, so a cron on a
+non-production environment without any variables still exits 0 with `skipped`.
 
 Global options: `--force` (ignore the environment gate), `--config=PATH`,
 `--env-stdin` (JSON object of environment overrides on stdin, for scripts

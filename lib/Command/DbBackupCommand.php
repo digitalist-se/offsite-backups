@@ -29,7 +29,9 @@ final class DbBackupCommand extends BaseCommand
         $now = $this->now();
         $class = BackupClass::forDate($now);
         $name = BackupName::dump($now, $config->project, $config->environment);
-        $localFile = $config->localDir . '/' . $name . '.gz';
+        // {file} is the path without ".gz": `drush sql:dump --gzip` appends the suffix itself.
+        $dumpTarget = $config->localDir . '/' . $name;
+        $localFile = $dumpTarget . '.gz';
         $repo = $config->repositoryUrl(Config::STORE_DB);
         $restic = $this->restic($config);
         $restic->requireRepository($repo);
@@ -42,7 +44,7 @@ final class DbBackupCommand extends BaseCommand
             $result = $this->runner()->run($this->dumpCommand($config), [
                 'OB_DRUSH' => $config->absolutePath($config->drushBin),
                 'OB_DRUPAL_ROOT' => $config->absolutePath($config->drushRoot),
-                'OB_FILE' => $localFile,
+                'OB_FILE' => $dumpTarget,
                 'OB_STRUCTURE_TABLES' => implode(',', $config->dbStructureTables),
             ], null, 7200, null, $config->projectRoot);
             if (!$result->ok()) {
@@ -86,7 +88,10 @@ final class DbBackupCommand extends BaseCommand
         }
     }
 
-    /** The operator template with placeholders mapped to "$VAR" references the shell resolves. */
+    /**
+     * The operator template with placeholders mapped to "$VAR" references the
+     * shell resolves. {file} carries no ".gz"; the command must write {file}.gz.
+     */
     private function dumpCommand(Config $config): string
     {
         $template = $config->dbDumpCommand;

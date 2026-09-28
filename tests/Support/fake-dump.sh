@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stands in for `drush sql:dump --gzip` in the package tests: writes a real
-# gzipped SQL dump with mysqldump's trailer to the --result-file path. Set
-# FAKE_DUMP_TRUNCATE=1 to omit the trailer (an interrupted mysqldump).
+# gzipped SQL dump with mysqldump's trailer. Like Drush with --gzip, it
+# appends ".gz" to the --result-file path itself. Set FAKE_DUMP_TRUNCATE=1 to
+# omit the trailer (an interrupted mysqldump).
 set -euo pipefail
 file=""
 for arg in "$@"; do
@@ -18,4 +19,4 @@ done
   if [ -z "${FAKE_DUMP_TRUNCATE:-}" ]; then
     echo "-- Dump completed on 2026-09-25  1:00:12"
   fi
-} | gzip -6 > "$file"
+} | gzip -6 > "$file.gz"

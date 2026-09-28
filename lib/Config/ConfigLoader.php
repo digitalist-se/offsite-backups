@@ -54,11 +54,14 @@ final class ConfigLoader
             $sources[$key] = $source;
         }
 
-        // Platform-provided fallbacks for project and environment.
-        foreach (['project' => 'PLATFORM_PROJECT', 'environment' => 'PLATFORM_ENVIRONMENT'] as $key => $platformVar) {
-            if ($values[$key] === null && $this->env->get($platformVar) !== null) {
-                $values[$key] = $this->env->get($platformVar);
-                $sources[$key] = 'env';
+        // Platform-provided fallbacks. PLATFORM_ENVIRONMENT is an id such as
+        // "main-bvxea6i" on Upsun; the branch name is what people expect.
+        foreach (['project' => ['PLATFORM_PROJECT'], 'environment' => ['PLATFORM_BRANCH', 'PLATFORM_ENVIRONMENT']] as $key => $platformVars) {
+            foreach ($platformVars as $platformVar) {
+                if ($values[$key] === null && $this->env->get($platformVar) !== null) {
+                    $values[$key] = $this->env->get($platformVar);
+                    $sources[$key] = 'env';
+                }
             }
         }
 

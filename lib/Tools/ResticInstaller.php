@@ -51,10 +51,11 @@ final class ResticInstaller
         }
         $archive = $path . '.bz2.part';
         $log("Downloading {$this->url}");
-        $context = stream_context_create(['http' => ['follow_location' => 1, 'max_redirects' => 5, 'timeout' => 300, 'header' => "User-Agent: offsite-backups\r\n"]]);
-        if (!@copy($this->url, $archive, $context)) {
+        // curl rather than PHP's http wrapper: build images may disable allow_url_fopen.
+        $download = $this->runner->run(['curl', '-fsSL', '--retry', '3', '--max-time', '300', '-A', 'offsite-backups', '-o', $archive, $this->url], [], null, 330);
+        if (!$download->ok()) {
             @unlink($archive);
-            throw new \RuntimeException("Download failed from {$this->url}");
+            throw new \RuntimeException("Download failed from {$this->url}: " . $download->tail(3));
         }
         $actual = hash_file('sha256', $archive);
         if ($actual !== $this->sha256) {
