@@ -42,7 +42,7 @@ final class ConfigCheckCommand extends BaseCommand
         foreach ($settings as $key => $def) {
             $value = $resolved->values[$key];
             $shown = match (true) {
-                $value === null => '(missing)',
+                $value === null => $def['required'] ? '(missing)' : '(unset)',
                 $def['type'] === 'secret' => '********',
                 is_array($value) => implode(', ', $value),
                 is_bool($value) => $value ? 'true' : 'false',

@@ -49,7 +49,7 @@ final class Settings
             'log.channel' => ['env' => 'OFFSITE_BACKUP_LOG_CHANNEL', 'default' => 'offsite-backup', 'type' => 'string', 'required' => false],
             'log.drupal' => ['env' => 'OFFSITE_BACKUP_LOG_DRUPAL', 'default' => true, 'type' => 'bool', 'required' => false],
             'slack.webhook_url' => ['env' => 'OFFSITE_BACKUP_SLACK_WEBHOOK_URL', 'default' => null, 'type' => 'secret', 'required' => false],
-            'slack.channel' => ['env' => 'OFFSITE_BACKUP_SLACK_CHANNEL', 'default' => '#alerts', 'type' => 'string', 'required' => false],
+            'slack.channel' => ['env' => 'OFFSITE_BACKUP_SLACK_CHANNEL', 'default' => null, 'type' => 'string', 'required' => false],
         ];
     }
 }

@@ -71,7 +71,7 @@ part of the package.
 ## 2. Same commands against the real bucket
 
 Export the real values instead of the test ones and point `s3.host`/`s3.bucket`
-at the the object storage bucket (it must exist; restic creates only the repositories):
+at the real bucket (it must exist; restic creates only the repositories):
 
 ```bash
 export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… RESTIC_PASSWORD=…

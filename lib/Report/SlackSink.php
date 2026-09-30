@@ -14,7 +14,7 @@ final class SlackSink implements Sink
     /** @param list<string> $allowedHosts */
     public function __construct(
         private readonly ?string $webhookUrl,
-        private readonly string $channel,
+        private readonly ?string $channel,
         private readonly OutputInterface $output,
         private readonly array $allowedHosts = ['hooks.slack.com'],
     ) {}
@@ -55,12 +55,12 @@ final class SlackSink implements Sink
         }
     }
 
-    /** @return array{channel: string, text: string} */
-    public static function payload(RunReport $report, string $channel): array
+    /** @return array{channel?: string, text: string} */
+    public static function payload(RunReport $report, ?string $channel): array
     {
         $lines = array_map(static fn (array $m): string => sprintf('[%s] %s', $m['level'], $m['message']), $report->messages());
         $tail = implode("\n", array_slice($lines, -self::TAIL_LINES));
         $text = sprintf("*:x: Offsite backup failed: %s/%s %s*\n%s\n```%s```", $report->project, $report->environment, $report->command, $report->error ?? 'unknown error', $tail);
-        return ['channel' => $channel, 'text' => $text];
+        return $channel === null ? ['text' => $text] : ['channel' => $channel, 'text' => $text];
     }
 }

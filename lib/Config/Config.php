@@ -46,7 +46,7 @@ final class Config
         public readonly string $logChannel,
         public readonly bool $logDrupal,
         public readonly ?string $slackWebhookUrl,
-        public readonly string $slackChannel,
+        public readonly ?string $slackChannel,
     ) {}
 
     public static function fromResolved(Resolved $r): self
@@ -65,7 +65,7 @@ final class Config
             (int) $v['retention.daily'], (int) $v['retention.biweekly'], (int) $v['retention.monthly'],
             (string) $v['check_subset'], (string) $v['status_max_age'],
             (string) $v['log.channel'], (bool) $v['log.drupal'],
-            $v['slack.webhook_url'] === null ? null : (string) $v['slack.webhook_url'], (string) $v['slack.channel'],
+            $v['slack.webhook_url'] === null ? null : (string) $v['slack.webhook_url'], $v['slack.channel'] === null ? null : (string) $v['slack.channel'],
         );
     }
 

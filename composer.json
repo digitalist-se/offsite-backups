@@ -2,7 +2,7 @@
     "name": "digitalist-se/offsite-backups",
     "description": "Offsite database and files backups with restic, for Digitalist Drupal sites",
     "type": "drupal-module",
-    "license": "proprietary",
+    "license": "GPL-3.0-or-later",
     "authors": [{"name": "Digitalist Sweden", "email": "jose.jimenez@digitalist.com"}],
     "require": {
         "php": "^8.1",

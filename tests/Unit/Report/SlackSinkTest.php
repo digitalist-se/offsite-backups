@@ -34,6 +34,13 @@ final class SlackSinkTest extends TestCase
         self::assertStringNotContainsString("line 5\n", $payload['text'], 'only the last 20 lines');
     }
 
+    public function testPayloadWithoutChannelLeavesItToTheWebhook(): void
+    {
+        $payload = SlackSink::payload($this->failedReport(), null);
+        self::assertArrayNotHasKey('channel', $payload);
+        self::assertStringContainsString('site/main db:backup', $payload['text']);
+    }
+
     public function testDisallowedHostIsNotCalled(): void
     {
         $output = new BufferedOutput();
