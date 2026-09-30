@@ -12,6 +12,7 @@ use Digitalist\OffsiteBackup\Config\ConfigLoader;
 use Digitalist\OffsiteBackup\Environment;
 use Digitalist\OffsiteBackup\Process\ProcessRunner;
 use Digitalist\OffsiteBackup\Restic\Restic;
+use Digitalist\OffsiteBackup\Restic\Snapshot;
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Datetime\DateFormatterInterface;
@@ -32,8 +33,8 @@ final class BackupStatus {
   ];
 
   private const DEFAULT_MAX_AGE = 93600;
-  private const DUMPS_CACHE_ID = 'offsite_backup.dumps';
-  private const DUMPS_CACHE_TTL = 300;
+  private const SNAPSHOTS_CACHE_PREFIX = 'offsite_backup.snapshots.';
+  private const SNAPSHOTS_CACHE_TTL = 300;
 
   public function __construct(
     private readonly StateInterface $state,
@@ -112,34 +113,61 @@ final class BackupStatus {
    * @return array{rows: list<array{date: string, class: string, name: string, snapshot: string, size: string}>, error: string|null}
    */
   public function dumps(): array {
-    $cached = $this->cache->get(self::DUMPS_CACHE_ID);
+    return $this->snapshots(Config::STORE_DB);
+  }
+
+  /**
+   * Files snapshots from the repository, cached for a few minutes.
+   *
+   * @return array{rows: list<array{date: string, class: string, name: string, snapshot: string, size: string}>, error: string|null}
+   */
+  public function filesSnapshots(): array {
+    return $this->snapshots(Config::STORE_FILES);
+  }
+
+  /**
+   * One listing row: dumps are named by their file, files snapshots by every path.
+   *
+   * @return array{date: string, class: string, name: string, snapshot: string, size: string}
+   */
+  public static function rowFor(Snapshot $snapshot, string $store): array {
+    return [
+      'date' => $snapshot->time->format('Y-m-d H:i'),
+      'class' => $snapshot->tags[0] ?? '',
+      'name' => $store === Config::STORE_DB ? ltrim($snapshot->paths[0] ?? '', '/') : implode(', ', $snapshot->paths),
+      'snapshot' => $snapshot->shortId,
+      'size' => DbListCommand::bytes($snapshot->totalBytesProcessed),
+    ];
+  }
+
+  /**
+   * @return array{rows: list<array{date: string, class: string, name: string, snapshot: string, size: string}>, error: string|null}
+   */
+  private function snapshots(string $store): array {
+    $cid = self::SNAPSHOTS_CACHE_PREFIX . $store;
+    $cached = $this->cache->get($cid);
     if ($cached !== FALSE && is_array($cached->data)) {
       return $cached->data;
     }
     try {
       $config = (new ConfigLoader(Application::detectProjectRoot(), Environment::fromGlobals()))->load();
       $restic = Restic::fromConfig($config, new ProcessRunner());
-      $repo = $config->repositoryUrl(Config::STORE_DB);
+      $repo = $config->repositoryUrl($store);
       $restic->requireRepository($repo);
       $rows = [];
       // A web request must not wait for a stalled endpoint: 30 s, then the cached error.
       foreach ($restic->snapshots($repo, ['host' => $config->resticHost()], 30) as $snapshot) {
-        $rows[] = [
-          'date' => $snapshot->time->format('Y-m-d H:i'),
-          'class' => $snapshot->tags[0] ?? '',
-          'name' => ltrim($snapshot->paths[0] ?? '', '/'),
-          'snapshot' => $snapshot->shortId,
-          'size' => DbListCommand::bytes($snapshot->totalBytesProcessed),
-        ];
+        $rows[] = self::rowFor($snapshot, $store);
       }
       $result = ['rows' => $rows, 'error' => NULL];
     }
     catch (\Throwable $e) {
       $result = ['rows' => [], 'error' => $e->getMessage()];
     }
-    $this->cache->set(self::DUMPS_CACHE_ID, $result, $this->time->getRequestTime() + self::DUMPS_CACHE_TTL);
+    $this->cache->set($cid, $result, $this->time->getRequestTime() + self::SNAPSHOTS_CACHE_TTL);
     return $result;
   }
+
 
   /**
    * Seconds since the run finished, when it was a success; NULL otherwise.

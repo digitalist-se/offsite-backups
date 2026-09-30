@@ -8,6 +8,8 @@ use Drupal\Core\Extension\Requirement\RequirementSeverity;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\offsite_backup\BackupStatus;
 use Drupal\offsite_backup\Controller\ReportController;
+use Digitalist\OffsiteBackup\Config\Config;
+use Digitalist\OffsiteBackup\Restic\Snapshot;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
@@ -115,8 +117,13 @@ class OffsiteBackupReportTest extends KernelTestBase {
     self::assertStringContainsString('Files backup', $html, 'jobs without a run are still listed');
     self::assertStringContainsString('Database 1 hour ago', $html);
     self::assertStringContainsString('Status: warning', $html, 'files never backed up is a warning, not an error');
-    // No secrets in the test environment: the listing degrades to a message.
-    self::assertStringContainsString('unavailable', $html);
+    // No secrets in the test environment: both listings degrade to a message.
+    self::assertStringContainsString('Dump listing unavailable', $html);
+    self::assertStringContainsString('Available files snapshots', $html);
+    self::assertStringContainsString('Files snapshot listing unavailable', $html);
+    $files = \Drupal::service('offsite_backup.status')->filesSnapshots();
+    self::assertSame([], $files['rows']);
+    self::assertIsString($files['error']);
     self::assertSame(0, $build['#cache']['max-age']);
   }
 
@@ -128,6 +135,19 @@ class OffsiteBackupReportTest extends KernelTestBase {
     self::assertStringContainsString('Files backup', $html);
     self::assertStringContainsString('Repository check', $html);
     self::assertSame('unknown', \Drupal::service('offsite_backup.status')->freshness()['level'], 'a success without a finished time is not fresh');
+  }
+
+  public function testSnapshotRowsNameDumpsByFileAndFilesByEveryPath(): void {
+    $snapshot = new Snapshot('abcdef0123456789', 'abcdef01', new \DateTimeImmutable('2026-09-30 01:00:00'), 'site-main', ['/app/web/sites/default/files', '/app/private'], ['daily'], 2048);
+    $row = BackupStatus::rowFor($snapshot, Config::STORE_FILES);
+    self::assertSame('/app/web/sites/default/files, /app/private', $row['name']);
+    self::assertSame('2026-09-30 01:00', $row['date']);
+    self::assertSame('daily', $row['class']);
+    self::assertSame('abcdef01', $row['snapshot']);
+    self::assertSame('2.0 KiB', $row['size']);
+
+    $dump = new Snapshot('fedcba9876543210', 'fedcba98', new \DateTimeImmutable('2026-09-30 01:00:00'), 'site-main', ['/2026-09-30-site-main.sql'], ['monthly'], NULL);
+    self::assertSame('2026-09-30-site-main.sql', BackupStatus::rowFor($dump, Config::STORE_DB)['name']);
   }
 
 }

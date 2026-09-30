@@ -20,7 +20,7 @@ final class ApplicationTest extends TestCase
 
     public function testVersionMatchesTheReleaseLine(): void
     {
-        self::assertSame('1.1.0', Application::VERSION);
+        self::assertSame('1.2.0', Application::VERSION);
     }
 
     public function testDetectProjectRootIsADirectory(): void

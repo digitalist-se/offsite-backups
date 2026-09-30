@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Drupal\offsite_backup\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
+use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\offsite_backup\BackupStatus;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
@@ -52,24 +53,45 @@ final class ReportController extends ControllerBase {
 
     $build['dumps_title'] = ['#type' => 'html_tag', '#tag' => 'h2', '#value' => $this->t('Available database dumps')];
     $dumps = $this->status->dumps();
-    if ($dumps['error'] !== NULL) {
-      $build['dumps'] = [
-        '#type' => 'html_tag',
-        '#tag' => 'p',
-        '#value' => $this->t('Dump listing unavailable: @reason', ['@reason' => $dumps['error']]),
-      ];
-    }
-    else {
-      $build['dumps'] = [
-        '#type' => 'table',
-        '#header' => [$this->t('Date'), $this->t('Class'), $this->t('Name'), $this->t('Snapshot'), $this->t('Size')],
-        '#rows' => array_map(static fn (array $r): array => [$r['date'], $r['class'], $r['name'], $r['snapshot'], $r['size']], $dumps['rows']),
-        '#empty' => $this->t('No dumps in the repository yet.'),
-      ];
-    }
+    $build['dumps'] = $this->listing(
+      $dumps,
+      $this->t('Name'),
+      $this->t('Dump listing unavailable: @reason', ['@reason' => (string) $dumps['error']]),
+      $this->t('No dumps in the repository yet.'),
+    );
+    $build['files_title'] = ['#type' => 'html_tag', '#tag' => 'h2', '#value' => $this->t('Available files snapshots')];
+    $files = $this->status->filesSnapshots();
+    $build['files'] = $this->listing(
+      $files,
+      $this->t('Paths'),
+      $this->t('Files snapshot listing unavailable: @reason', ['@reason' => (string) $files['error']]),
+      $this->t('No files snapshots in the repository yet.'),
+    );
     $build['#cache'] = ['max-age' => 0];
     return $build;
   }
+
+  /**
+   * A snapshot table, or the reason the repository could not be listed.
+   *
+   * @param array{rows: list<array{date: string, class: string, name: string, snapshot: string, size: string}>, error: string|null} $listing
+   */
+  private function listing(array $listing, TranslatableMarkup $nameHeader, TranslatableMarkup $unavailable, TranslatableMarkup $empty): array {
+    if ($listing['error'] !== NULL) {
+      return [
+        '#type' => 'html_tag',
+        '#tag' => 'p',
+        '#value' => $unavailable,
+      ];
+    }
+    return [
+      '#type' => 'table',
+      '#header' => [$this->t('Date'), $this->t('Class'), $nameHeader, $this->t('Snapshot'), $this->t('Size')],
+      '#rows' => array_map(static fn (array $r): array => [$r['date'], $r['class'], $r['name'], $r['snapshot'], $r['size']], $listing['rows']),
+      '#empty' => $empty,
+    ];
+  }
+
 
   /**
    * One line of details or the error, whatever the payload's shape.
