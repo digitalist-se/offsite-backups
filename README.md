@@ -138,6 +138,41 @@ vendor/bin/offsite-backup files:restore --target=web/sites/default/files
 Or with plain restic: `restic -r s3:https://<host>/<bucket>/<repository> snapshots`,
 `restic -r … dump latest /<name>.sql | gzip > dump.sql.gz`.
 
+## Report page (Drupal module)
+
+Enable `offsite_backup` on the site. It adds `/admin/reports/offsite-backups`
+(permission `access site reports`) with the last run of each job, a
+freshness summary and the dumps available in the repository, and an
+"Offsite backups" entry on the status report: warning when the last
+successful database or files backup is older than `status_max_age`, or when
+one of them has never succeeded; error at twice that age. The page reads the
+State keys the CLI writes and lists dumps through restic with the runtime
+environment, so it needs the secrets at runtime; without them it says so
+instead of failing.
+
+## Local restore from ddev
+
+Two host-side scripts ship under `ddev/`. A site adds a three-line shim per
+command in `.ddev/commands/host/` that passes its parameters:
+
+```bash
+#!/usr/bin/env bash
+## Description: Update sql/db_latest.sql.gz from the offsite backups
+## Usage: update-db-latest [--date=YYYY-MM-DD|--latest] [--list] [--all] [--keep-local=N] [--refresh]
+exec "${DDEV_APPROOT}/web/modules/contrib/offsite_backup/ddev/update-db-latest.sh" --bw-item="[Site] Offsite backup" --environment=main --restic-bin=restic "$@"
+```
+
+`update-db-latest.sh` lists the dumps newest first with a date picker (Enter
+takes the newest; `--date`/`--latest` skip the prompt; without a terminal the
+newest is used), downloads the chosen one into `sql/<YYYYMMDD>-<label>.sql.gz`
+and points `sql/db_latest.sql.gz` at it. `update-files-latest.sh` restores a
+files snapshot into a directory. Both read the credentials from a Bitwarden
+item (`bw unlock` first) whose custom fields are named like the variables:
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `RESTIC_PASSWORD`; every field
+starting with `AWS_`, `RESTIC_` or `OFFSITE_BACKUP_` is forwarded. Secrets go
+to the container on stdin and never touch the disk. The web container needs
+`restic` (`webimage_extra_packages: [restic]`) and the host needs `bw` and `jq`.
+
 ## Development
 
 ```bash

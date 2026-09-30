@@ -18,6 +18,11 @@ final class ApplicationTest extends TestCase
         self::assertSame('/tmp/project', $app->getProjectRoot());
     }
 
+    public function testVersionMatchesTheReleaseLine(): void
+    {
+        self::assertSame('1.1.0', Application::VERSION);
+    }
+
     public function testDetectProjectRootIsADirectory(): void
     {
         self::assertDirectoryExists(Application::detectProjectRoot());
