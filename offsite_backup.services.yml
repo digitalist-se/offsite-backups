@@ -1,0 +1,5 @@
+services:
+  offsite_backup.status:
+    class: Drupal\offsite_backup\BackupStatus
+    arguments: ['@state', '@cache.default', '@datetime.time', '@date.formatter']
+  Drupal\offsite_backup\BackupStatus: '@offsite_backup.status'

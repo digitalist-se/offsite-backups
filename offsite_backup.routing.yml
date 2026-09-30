@@ -1,0 +1,7 @@
+offsite_backup.report:
+  path: '/admin/reports/offsite-backups'
+  defaults:
+    _controller: '\Drupal\offsite_backup\Controller\ReportController::page'
+    _title: 'Offsite backups'
+  requirements:
+    _permission: 'access site reports'

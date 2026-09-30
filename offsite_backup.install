@@ -1,0 +1,32 @@
+<?php
+
+/**
+ * @file
+ * Legacy status-report entry for Drupal 10.3 to 11.1.
+ *
+ * Drupal 11.2+ uses hook_runtime_requirements() in src/Hook; the attribute
+ * below stops this legacy implementation from running (and from being
+ * deprecated) on 11.3 and later.
+ */
+
+declare(strict_types=1);
+
+use Drupal\Core\Hook\Attribute\LegacyRequirementsHook;
+
+/**
+ * Implements hook_requirements().
+ */
+#[LegacyRequirementsHook]
+function offsite_backup_requirements(string $phase): array {
+  if ($phase !== 'runtime') {
+    return [];
+  }
+  $entry = \Drupal::service('offsite_backup.status')->requirement();
+  $entry['severity'] = match ($entry['level']) {
+    'ok' => REQUIREMENT_OK,
+    'error' => REQUIREMENT_ERROR,
+    default => REQUIREMENT_WARNING,
+  };
+  unset($entry['level']);
+  return ['offsite_backup' => $entry];
+}

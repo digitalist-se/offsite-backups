@@ -1,0 +1,5 @@
+offsite_backup.report:
+  title: 'Offsite backups'
+  description: 'Last backup runs, freshness and available database dumps.'
+  parent: system.admin_reports
+  route_name: offsite_backup.report
