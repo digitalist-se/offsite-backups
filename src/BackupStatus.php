@@ -122,7 +122,8 @@ final class BackupStatus {
       $repo = $config->repositoryUrl(Config::STORE_DB);
       $restic->requireRepository($repo);
       $rows = [];
-      foreach ($restic->snapshots($repo, ['host' => $config->resticHost()]) as $snapshot) {
+      // A web request must not wait for a stalled endpoint: 30 s, then the cached error.
+      foreach ($restic->snapshots($repo, ['host' => $config->resticHost()], 30) as $snapshot) {
         $rows[] = [
           'date' => $snapshot->time->format('Y-m-d H:i'),
           'class' => $snapshot->tags[0] ?? '',

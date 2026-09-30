@@ -116,6 +116,23 @@ final class DdevUpdateDbLatestScriptTest extends IntegrationTestCase
         self::assertFileDoesNotExist($this->projectRoot . '/sql/20260920-prod.sql.gz');
     }
 
+    public function testFailureReasonsFromTheBinaryReachStderr(): void
+    {
+        $fields = [['name' => 'AWS_ACCESS_KEY_ID', 'value' => $this->s3Env()['key']], ['name' => 'AWS_SECRET_ACCESS_KEY', 'value' => $this->s3Env()['secret']], ['name' => 'RESTIC_PASSWORD', 'value' => 'wrong-password']];
+        $result = $this->runScript(['--latest'], null, ['FAKE_BW_ITEM_JSON' => (string) json_encode(['fields' => $fields])]);
+        self::assertSame(1, $result->exitCode);
+        self::assertStringContainsString('Could not list the dumps', $result->stderr);
+        self::assertStringContainsString('Cannot access repository', $result->stderr, "the binary's own error is not swallowed");
+    }
+
+    public function testQuotedExecBranchWorksLikeDdevExec(): void
+    {
+        // OB_EXEC non-empty takes the printf %q branch used with `ddev exec`; `bash -c` re-parses the one argument the same way.
+        $result = $this->runScript(['--list', '--exec=bash -c']);
+        self::assertTrue($result->ok(), $result->tail(10));
+        self::assertStringContainsString('2026-09-21', $result->stdout);
+    }
+
     public function testMissingBitwardenFieldAndLockedVaultAreReportedBeforeAnyDownload(): void
     {
         $noPassword = $this->runner()->run(['bash', $this->script, '--bw-item=[Site] Offsite backup', '--root=' . $this->projectRoot, '--latest'], [

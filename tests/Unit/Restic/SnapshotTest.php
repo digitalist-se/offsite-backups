@@ -39,6 +39,23 @@ final class SnapshotTest extends TestCase
         Snapshot::listFromJson('not json');
     }
 
+    public function testSnapshotsHonourTheCallerTimeout(): void
+    {
+        // A shell script stands in for a stalled restic binary (external dependency); it never answers.
+        $dir = \Digitalist\OffsiteBackup\Tests\Support\TempDir::create();
+        file_put_contents("$dir/restic", "#!/bin/sh\nsleep 30\n");
+        chmod("$dir/restic", 0755);
+        $restic = new \Digitalist\OffsiteBackup\Restic\Restic(new \Digitalist\OffsiteBackup\Process\ProcessRunner(), "$dir/restic", 'pw', 'k', 's', "$dir/cache");
+        $started = microtime(true);
+        try {
+            $restic->snapshots('s3:http://127.0.0.1:1/x/y', [], 1);
+            self::fail('expected a timeout');
+        } catch (ResticException $e) {
+            self::assertStringContainsString('timed out', $e->getMessage());
+        }
+        self::assertLessThan(10, microtime(true) - $started);
+    }
+
     public function testBackupSummaryFromJsonLines(): void
     {
         $lines = "{\"message_type\":\"status\",\"percent_done\":0.5}\n{\"message_type\":\"summary\",\"snapshot_id\":\"deadbeef\",\"total_bytes_processed\":42,\"files_new\":1}\n";

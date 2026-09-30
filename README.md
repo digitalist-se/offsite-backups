@@ -140,7 +140,8 @@ Or with plain restic: `restic -r s3:https://<host>/<bucket>/<repository> snapsho
 
 ## Report page (Drupal module)
 
-Enable `offsite_backup` on the site. It adds `/admin/reports/offsite-backups`
+Enable `offsite_backup` on the site (Drupal 11.2 or newer; the CLI itself has
+no Drupal requirement). It adds `/admin/reports/offsite-backups`
 (permission `access site reports`) with the last run of each job, a
 freshness summary and the dumps available in the repository, and an
 "Offsite backups" entry on the status report: warning when the last

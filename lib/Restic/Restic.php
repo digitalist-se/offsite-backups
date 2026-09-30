@@ -104,7 +104,7 @@ final class Restic
      * @param array{tag?: string, host?: string, latest?: int, path?: string} $filter
      * @return list<Snapshot>
      */
-    public function snapshots(string $repositoryUrl, array $filter = []): array
+    public function snapshots(string $repositoryUrl, array $filter = [], int $timeout = 600): array
     {
         $args = ['snapshots', '--json'];
         if (isset($filter['tag'])) {
@@ -119,7 +119,7 @@ final class Restic
             $args[] = '--path';
             $args[] = $filter['path'];
         }
-        $result = $this->run($repositoryUrl, $args, null, 600);
+        $result = $this->run($repositoryUrl, $args, null, $timeout);
         $snapshots = Snapshot::listFromJson(trim($result->stdout) === '' ? '[]' : $result->stdout);
         usort($snapshots, static fn (Snapshot $a, Snapshot $b): int => $b->time <=> $a->time);
         if (isset($filter['latest'])) {

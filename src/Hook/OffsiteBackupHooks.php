@@ -9,10 +9,8 @@ use Drupal\Core\Hook\Attribute\Hook;
 use Drupal\offsite_backup\BackupStatus;
 
 /**
- * Hook implementations for Drupal 11.2 and later (hook_runtime_requirements).
- *
- * Older cores never discover this class; they use the legacy hook in
- * offsite_backup.install instead.
+ * Hook implementations (hook_runtime_requirements needs Drupal 11.2 or later,
+ * which is the module's minimum; the CLI itself has no Drupal requirement).
  */
 final class OffsiteBackupHooks {
 

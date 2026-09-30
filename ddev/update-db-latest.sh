@@ -47,7 +47,7 @@ ob_require_tools bw jq
 cd "$OB_ROOT" && mkdir -p "$SQL_DIR"
 
 ENV_JSON=$(ob_env_json "$BW_ITEM" "OFFSITE_BACKUP_ENVIRONMENT=$ENVIRONMENT" "OFFSITE_BACKUP_RESTIC_BIN=$RESTIC_BIN")
-LISTING=$(ob_run "$ENV_JSON" db:list --json) || ob_die "Could not list the dumps"
+LISTING=$(ob_run "$ENV_JSON" db:list --json) || { printf '%s\n' "$LISTING" >&2; ob_die "Could not list the dumps"; }
 COUNT=$(printf '%s' "$LISTING" | jq 'length')
 [ "$COUNT" -gt 0 ] || ob_die "No dumps in the repository for this site"
 mapfile -t IDS < <(printf '%s' "$LISTING" | jq -r '.[].id')
@@ -95,7 +95,7 @@ if [ -f "$TARGET" ]; then
 else
   echo "Downloading $NAME (${CLASSES[$pick]}, $DAY)…"
   TMP="$SQL_DIR/.download"; mkdir -p "$TMP"
-  ob_run "$ENV_JSON" db:download "$ID" --to="$(ob_container_path "$TMP")" >/dev/null || ob_die "Download failed"
+  DL_OUT=$(ob_run "$ENV_JSON" db:download "$ID" --to="$(ob_container_path "$TMP")") || { printf '%s\n' "$DL_OUT" >&2; ob_die "Download failed"; }
   DOWNLOADED="$TMP/$NAME.gz"
   [ -f "$DOWNLOADED" ] || ob_die "Expected $DOWNLOADED after the download"
   mv "$DOWNLOADED" "$TARGET"; rmdir "$TMP" 2>/dev/null || true
