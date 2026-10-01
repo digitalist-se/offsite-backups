@@ -142,12 +142,17 @@ Or with plain restic: `restic -r s3:https://<host>/<bucket>/<repository> snapsho
 
 Enable `offsite_backup` on the site (Drupal 11.2 or newer; the CLI itself has
 no Drupal requirement). It adds `/admin/reports/offsite-backups`
-(permission `access site reports`) with the last run of each job, a
-freshness summary, the dumps and the files snapshots available in the
-repositories (cached for five minutes), and an
-"Offsite backups" entry on the status report: warning when the last
-successful database or files backup is older than `status_max_age`, or when
-one of them has never succeeded; error at twice that age. The page reads the
+(permission `access site reports`) laid out like the core status report: one
+entry per job with its outcome, age, details and next run; a repositories
+table with snapshot count, storage used in the bucket (compressed and
+deduplicated, from `restic stats`, cached for an hour), the restore window
+and the snapshots per class against the retention; the dumps and the files
+snapshots (cached for five minutes); the cron schedule when the platform
+exposes it (Upsun and Platform.sh do, through `PLATFORM_APPLICATION`); and
+the resolved non-secret settings with their source. The status report gets an
+"Offsite backups" entry: warning when the last successful database or files
+backup is older than `status_max_age`, or when one of them has never
+succeeded; error at twice that age. The page reads the
 State keys the CLI writes and lists snapshots through restic with the runtime
 environment, so it needs the secrets at runtime; without them it says so
 instead of failing.

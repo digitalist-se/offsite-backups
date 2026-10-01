@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Drupal\offsite_backup\Controller;
 
+use Digitalist\OffsiteBackup\Config\Config;
+use Digitalist\OffsiteBackup\Platform\ScheduledJob;
 use Drupal\Core\Controller\ControllerBase;
+use Drupal\Core\Datetime\DateFormatterInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\offsite_backup\BackupStatus;
+use Drupal\offsite_backup\RepositoryInsight;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -14,61 +18,100 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  */
 final class ReportController extends ControllerBase {
 
-  public function __construct(private readonly BackupStatus $status) {}
+  public function __construct(
+    private readonly BackupStatus $status,
+    private readonly RepositoryInsight $repositories,
+    private readonly DateFormatterInterface $dateFormatter,
+  ) {}
 
   /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container): static {
-    return new static($container->get('offsite_backup.status'));
+    return new static($container->get('offsite_backup.status'), $container->get('offsite_backup.repositories'), $container->get('date.formatter'));
   }
 
   /**
    * The report page.
    */
   public function page(): array {
-    $freshness = $this->status->freshness();
-    $build['freshness'] = [
-      '#type' => 'html_tag',
-      '#tag' => 'p',
-      '#value' => $this->t('@summary Status: @level.', ['@summary' => $freshness['summary'], '@level' => $freshness['level']]),
+    $build['#attached']['library'][] = 'system/status.report';
+    $build['jobs'] = [
+      '#type' => 'status_report',
+      '#requirements' => $this->status->entries(),
     ];
 
-    $rows = [];
-    foreach ($this->status->lastRuns() as $job => $run) {
-      $rows[] = [
-        BackupStatus::JOBS[$job],
-        $run['finished'] ?? '-',
-        $run['outcome'] ?? '-',
-        isset($run['duration_seconds']) ? $run['duration_seconds'] . ' s' : '-',
-        $this->describeDetails($run),
+    $build['repositories_title'] = $this->heading($this->t('Repositories'));
+    $overview = $this->repositories->overview();
+    if ($overview['error'] !== NULL) {
+      $build['repositories'] = $this->note($this->t('Repository overview unavailable: @reason', ['@reason' => $overview['error']]));
+    }
+    else {
+      $build['repositories'] = [
+        '#type' => 'table',
+        '#header' => [$this->t('Repository'), $this->t('Snapshots'), $this->t('Storage used'), $this->t('Oldest'), $this->t('Newest'), $this->t('Retention coverage'), $this->t('Note')],
+        '#rows' => array_map(static fn (array $r): array => [$r['label'] . ' (' . $r['repository'] . ')', $r['snapshots'], $r['size'], $r['oldest'], $r['newest'], $r['coverage'], $r['note']], $overview['rows']),
       ];
     }
-    $build['runs'] = [
-      '#type' => 'table',
-      '#caption' => $this->t('Last run per job'),
-      '#header' => [$this->t('Job'), $this->t('Finished'), $this->t('Outcome'), $this->t('Duration'), $this->t('Details')],
-      '#rows' => $rows,
-    ];
 
-    $build['dumps_title'] = ['#type' => 'html_tag', '#tag' => 'h2', '#value' => $this->t('Available database dumps')];
-    $dumps = $this->status->dumps();
+    $build['dumps_title'] = $this->heading($this->t('Available database dumps'));
+    $dumps = $this->repositories->listing(Config::STORE_DB);
     $build['dumps'] = $this->listing(
       $dumps,
       $this->t('Name'),
       $this->t('Dump listing unavailable: @reason', ['@reason' => (string) $dumps['error']]),
       $this->t('No dumps in the repository yet.'),
     );
-    $build['files_title'] = ['#type' => 'html_tag', '#tag' => 'h2', '#value' => $this->t('Available files snapshots')];
-    $files = $this->status->filesSnapshots();
+    $build['files_title'] = $this->heading($this->t('Available files snapshots'));
+    $files = $this->repositories->listing(Config::STORE_FILES);
     $build['files'] = $this->listing(
       $files,
       $this->t('Paths'),
       $this->t('Files snapshot listing unavailable: @reason', ['@reason' => (string) $files['error']]),
       $this->t('No files snapshots in the repository yet.'),
     );
+
+    $schedule = $this->status->schedule();
+    if ($schedule !== []) {
+      $build['schedule_title'] = $this->heading($this->t('Schedule'));
+      $build['schedule'] = [
+        '#type' => 'table',
+        '#header' => [$this->t('Job'), $this->t('Cron'), $this->t('Next run'), $this->t('Command')],
+        '#rows' => array_map(fn (ScheduledJob $job): array => [
+          BackupStatus::JOBS[$job->job] ?? $job->job,
+          $job->spec,
+          $job->next === NULL ? '-' : $this->dateFormatter->format($job->next->getTimestamp(), 'custom', 'D Y-m-d H:i T'),
+          $job->command,
+        ], $schedule),
+      ];
+    }
+
+    $configuration = $this->status->configuration();
+    $build['configuration'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Configuration'),
+      '#open' => FALSE,
+    ];
+    if ($configuration['error'] !== NULL) {
+      $build['configuration']['note'] = $this->note($this->t('Configuration unavailable: @reason', ['@reason' => $configuration['error']]));
+    }
+    else {
+      $build['configuration']['table'] = [
+        '#type' => 'table',
+        '#header' => [$this->t('Setting'), $this->t('Value'), $this->t('Source')],
+        '#rows' => array_map(static fn (array $r): array => [$r['key'], $r['value'], $r['source']], $configuration['rows']),
+      ];
+    }
     $build['#cache'] = ['max-age' => 0];
     return $build;
+  }
+
+  private function heading(TranslatableMarkup $title): array {
+    return ['#type' => 'html_tag', '#tag' => 'h2', '#value' => $title];
+  }
+
+  private function note(TranslatableMarkup $text): array {
+    return ['#type' => 'html_tag', '#tag' => 'p', '#value' => $text];
   }
 
   /**
@@ -78,11 +121,7 @@ final class ReportController extends ControllerBase {
    */
   private function listing(array $listing, TranslatableMarkup $nameHeader, TranslatableMarkup $unavailable, TranslatableMarkup $empty): array {
     if ($listing['error'] !== NULL) {
-      return [
-        '#type' => 'html_tag',
-        '#tag' => 'p',
-        '#value' => $unavailable,
-      ];
+      return $this->note($unavailable);
     }
     return [
       '#type' => 'table',
@@ -90,25 +129,6 @@ final class ReportController extends ControllerBase {
       '#rows' => array_map(static fn (array $r): array => [$r['date'], $r['class'], $r['name'], $r['snapshot'], $r['size']], $listing['rows']),
       '#empty' => $empty,
     ];
-  }
-
-
-  /**
-   * One line of details or the error, whatever the payload's shape.
-   */
-  private function describeDetails(?array $run): string {
-    if ($run === NULL) {
-      return '-';
-    }
-    if (is_string($run['error'] ?? NULL) && $run['error'] !== '') {
-      return $run['error'];
-    }
-    $details = is_array($run['details'] ?? NULL) ? $run['details'] : [];
-    $parts = [];
-    foreach ($details as $key => $value) {
-      $parts[] = $key . '=' . (is_scalar($value) ? (string) $value : json_encode($value));
-    }
-    return $parts === [] ? '-' : implode(', ', $parts);
   }
 
 }

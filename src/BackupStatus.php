@@ -6,22 +6,21 @@ namespace Drupal\offsite_backup;
 
 use Digitalist\OffsiteBackup\Application;
 use Digitalist\OffsiteBackup\Backup\Duration;
-use Digitalist\OffsiteBackup\Command\DbListCommand;
-use Digitalist\OffsiteBackup\Config\Config;
 use Digitalist\OffsiteBackup\Config\ConfigLoader;
+use Digitalist\OffsiteBackup\Config\Settings;
 use Digitalist\OffsiteBackup\Environment;
-use Digitalist\OffsiteBackup\Process\ProcessRunner;
-use Digitalist\OffsiteBackup\Restic\Restic;
-use Digitalist\OffsiteBackup\Restic\Snapshot;
+use Digitalist\OffsiteBackup\Platform\ScheduledJob;
+use Digitalist\OffsiteBackup\Platform\UpsunSchedule;
 use Drupal\Component\Datetime\TimeInterface;
-use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Datetime\DateFormatterInterface;
+use Drupal\Core\Extension\Requirement\RequirementSeverity;
 use Drupal\Core\State\StateInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\Core\Url;
 
 /**
- * Reads what the offsite-backup CLI left in State and, on demand, the repository.
+ * Reads what the offsite-backup CLI left in State, plus the schedule and
+ * configuration it runs with.
  */
 final class BackupStatus {
 
@@ -32,13 +31,11 @@ final class BackupStatus {
     'check' => 'Repository check',
   ];
 
+  private const BACKUP_JOBS = ['db_backup', 'files_backup'];
   private const DEFAULT_MAX_AGE = 93600;
-  private const SNAPSHOTS_CACHE_PREFIX = 'offsite_backup.snapshots.';
-  private const SNAPSHOTS_CACHE_TTL = 300;
 
   public function __construct(
     private readonly StateInterface $state,
-    private readonly CacheBackendInterface $cache,
     private readonly TimeInterface $time,
     private readonly DateFormatterInterface $dateFormatter,
   ) {}
@@ -108,72 +105,136 @@ final class BackupStatus {
   }
 
   /**
-   * Database dump snapshots from the repository, cached for a few minutes.
+   * One status-report entry per job, for the status_report render element.
    *
-   * @return array{rows: list<array{date: string, class: string, name: string, snapshot: string, size: string}>, error: string|null}
-   */
-  public function dumps(): array {
-    return $this->snapshots(Config::STORE_DB);
-  }
-
-  /**
-   * Files snapshots from the repository, cached for a few minutes.
+   * A failed last run is an error and a job never run a warning. A backup
+   * older than status_max_age is a warning, older than twice that an error;
+   * retention and check are weekly and do not go stale.
    *
-   * @return array{rows: list<array{date: string, class: string, name: string, snapshot: string, size: string}>, error: string|null}
+   * @return array<string, array{title: \Drupal\Core\StringTranslation\TranslatableMarkup, value: string, description: array<string, mixed>, severity: \Drupal\Core\Extension\Requirement\RequirementSeverity}>
    */
-  public function filesSnapshots(): array {
-    return $this->snapshots(Config::STORE_FILES);
-  }
-
-  /**
-   * One listing row: dumps are named by their file, files snapshots by every path.
-   *
-   * @return array{date: string, class: string, name: string, snapshot: string, size: string}
-   */
-  public static function rowFor(Snapshot $snapshot, string $store): array {
-    return [
-      'date' => $snapshot->time->format('Y-m-d H:i'),
-      'class' => $snapshot->tags[0] ?? '',
-      'name' => $store === Config::STORE_DB ? ltrim($snapshot->paths[0] ?? '', '/') : implode(', ', $snapshot->paths),
-      'snapshot' => $snapshot->shortId,
-      'size' => DbListCommand::bytes($snapshot->totalBytesProcessed),
-    ];
-  }
-
-  /**
-   * @return array{rows: list<array{date: string, class: string, name: string, snapshot: string, size: string}>, error: string|null}
-   */
-  private function snapshots(string $store): array {
-    $cid = self::SNAPSHOTS_CACHE_PREFIX . $store;
-    $cached = $this->cache->get($cid);
-    if ($cached !== FALSE && is_array($cached->data)) {
-      return $cached->data;
+  public function entries(): array {
+    $runs = $this->lastRuns();
+    $max = $this->maxAgeSeconds();
+    $next = [];
+    foreach ($this->schedule() as $scheduled) {
+      $next[$scheduled->job] = $scheduled->next;
     }
-    try {
-      $config = (new ConfigLoader(Application::detectProjectRoot(), Environment::fromGlobals()))->load();
-      $restic = Restic::fromConfig($config, new ProcessRunner());
-      $repo = $config->repositoryUrl($store);
-      $restic->requireRepository($repo);
-      $rows = [];
-      // A web request must not wait for a stalled endpoint: 30 s, then the cached error.
-      foreach ($restic->snapshots($repo, ['host' => $config->resticHost()], 30) as $snapshot) {
-        $rows[] = self::rowFor($snapshot, $store);
+    $entries = [];
+    foreach (self::JOBS as $job => $label) {
+      $run = $runs[$job];
+      $age = $this->finishedAge($run);
+      $duration = isset($run['duration_seconds']) ? $run['duration_seconds'] . ' s' : '?';
+      if ($run === NULL || $age === NULL) {
+        $severity = RequirementSeverity::Warning;
+        $value = $run === NULL ? 'Never run' : 'Recorded without a finish time';
       }
-      $result = ['rows' => $rows, 'error' => NULL];
+      elseif (($run['outcome'] ?? NULL) !== 'success') {
+        $severity = RequirementSeverity::Error;
+        $value = sprintf('Failed %s ago in %s', $this->dateFormatter->formatInterval($age, 1), $duration);
+      }
+      else {
+        $stale = in_array($job, self::BACKUP_JOBS, TRUE);
+        $severity = $stale && $age > 2 * $max ? RequirementSeverity::Error : ($stale && $age > $max ? RequirementSeverity::Warning : RequirementSeverity::OK);
+        $value = sprintf('Succeeded %s ago in %s', $this->dateFormatter->formatInterval($age, 1), $duration);
+      }
+      $lines = [];
+      if (is_string($run['error'] ?? NULL) && $run['error'] !== '') {
+        $lines[] = $run['error'];
+      }
+      $details = self::describeDetails($run);
+      if ($details !== '') {
+        $lines[] = $details;
+      }
+      if (isset($run['finished']) && is_string($run['finished'])) {
+        $lines[] = 'Finished ' . $run['finished'];
+      }
+      if (isset($next[$job])) {
+        $lines[] = 'Next run ' . $this->dateFormatter->format($next[$job]->getTimestamp(), 'custom', 'D Y-m-d H:i T');
+      }
+      $entries[$job] = [
+        'title' => new TranslatableMarkup($label),
+        'value' => $value,
+        'description' => [
+          '#type' => 'inline_template',
+          '#template' => '{% for line in lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}',
+          '#context' => ['lines' => $lines],
+        ],
+        'severity' => $severity,
+      ];
+    }
+    return $entries;
+  }
+
+  /**
+   * The backup crons the platform exposes, empty when it exposes none.
+   *
+   * @return list<\Digitalist\OffsiteBackup\Platform\ScheduledJob>
+   */
+  public function schedule(): array {
+    $now = (new \DateTimeImmutable('@' . $this->time->getRequestTime()))->setTimezone(new \DateTimeZone('UTC'));
+    return UpsunSchedule::fromEnvironment(Environment::fromGlobals(), $now);
+  }
+
+  /**
+   * The resolved non-secret settings with their source, as config:check shows them.
+   *
+   * @return array{rows: list<array{key: string, value: string, source: string}>, error: string|null}
+   */
+  public function configuration(): array {
+    try {
+      $resolved = (new ConfigLoader(Application::detectProjectRoot(), Environment::fromGlobals()))->resolve();
     }
     catch (\Throwable $e) {
-      $result = ['rows' => [], 'error' => $e->getMessage()];
+      return ['rows' => [], 'error' => $e->getMessage()];
     }
-    $this->cache->set($cid, $result, $this->time->getRequestTime() + self::SNAPSHOTS_CACHE_TTL);
-    return $result;
+    $definitions = Settings::all();
+    $rows = [];
+    foreach ($resolved->values as $key => $value) {
+      if (($definitions[$key]['type'] ?? '') === 'secret') {
+        continue;
+      }
+      $rows[] = ['key' => (string) $key, 'value' => self::formatValue($value), 'source' => $resolved->sources[$key] ?? 'default'];
+    }
+    return ['rows' => $rows, 'error' => NULL];
   }
 
+  /**
+   * The run's details as "key=value" pairs, or the empty string.
+   */
+  public static function describeDetails(?array $run): string {
+    $details = is_array($run['details'] ?? NULL) ? $run['details'] : [];
+    $parts = [];
+    foreach ($details as $key => $value) {
+      if ($value === NULL) {
+        continue;
+      }
+      $parts[] = $key . '=' . (is_scalar($value) ? var_export($value, TRUE) : json_encode($value));
+    }
+    return implode(', ', $parts);
+  }
+
+  private static function formatValue(mixed $value): string {
+    return match (TRUE) {
+      is_array($value) => implode(', ', array_map(static fn ($v): string => is_scalar($v) ? (string) $v : json_encode($v), $value)),
+      is_bool($value) => $value ? 'true' : 'false',
+      $value === NULL => '',
+      default => (string) $value,
+    };
+  }
 
   /**
    * Seconds since the run finished, when it was a success; NULL otherwise.
    */
   private function successAge(?array $run): ?int {
-    if ($run === NULL || ($run['outcome'] ?? NULL) !== 'success' || !is_string($run['finished'] ?? NULL)) {
+    return ($run['outcome'] ?? NULL) === 'success' ? $this->finishedAge($run) : NULL;
+  }
+
+  /**
+   * Seconds since the run finished, whatever its outcome; NULL without a time.
+   */
+  private function finishedAge(?array $run): ?int {
+    if ($run === NULL || !is_string($run['finished'] ?? NULL)) {
       return NULL;
     }
     $finished = strtotime($run['finished']);

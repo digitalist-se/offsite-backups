@@ -196,6 +196,13 @@ final class Restic
         $this->run($repositoryUrl, ['check', '--read-data-subset', $readDataSubset]);
     }
 
+    /** Storage actually used by the repository: compressed and deduplicated. */
+    public function stats(string $repositoryUrl, int $timeout = 600): RepositoryStats
+    {
+        $result = $this->run($repositoryUrl, ['stats', '--mode', 'raw-data', '--json'], null, $timeout);
+        return RepositoryStats::fromJson(trim($result->stdout));
+    }
+
     /** Streams `restic dump` into a gzip file; returns the number of uncompressed bytes. */
     public function dumpToGzip(string $repositoryUrl, string $snapshotId, string $path, string $targetFile): int
     {

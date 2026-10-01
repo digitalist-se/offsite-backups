@@ -1,5 +1,5 @@
 name: Offsite backup
 type: module
-description: Report page and status entry for the offsite-backups CLI (last runs, freshness, available dumps).
+description: Report page and status entry for the offsite-backups CLI (last runs, repositories, snapshots, schedule, configuration).
 package: Digitalist
 core_version_requirement: ^11.2

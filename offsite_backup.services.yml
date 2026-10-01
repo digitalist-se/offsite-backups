@@ -1,5 +1,9 @@
 services:
   offsite_backup.status:
     class: Drupal\offsite_backup\BackupStatus
-    arguments: ['@state', '@cache.default', '@datetime.time', '@date.formatter']
+    arguments: ['@state', '@datetime.time', '@date.formatter']
   Drupal\offsite_backup\BackupStatus: '@offsite_backup.status'
+  offsite_backup.repositories:
+    class: Drupal\offsite_backup\RepositoryInsight
+    arguments: ['@cache.default', '@datetime.time']
+  Drupal\offsite_backup\RepositoryInsight: '@offsite_backup.repositories'
