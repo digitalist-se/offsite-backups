@@ -4,4 +4,4 @@ offsite_backup.report:
     _controller: '\Drupal\offsite_backup\Controller\ReportController::page'
     _title: 'Offsite backups'
   requirements:
-    _permission: 'access site reports'
+    _permission: 'view offsite backups'

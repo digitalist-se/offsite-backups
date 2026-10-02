@@ -26,7 +26,7 @@ final class ConfigCheckCommandTest extends TestCase
         self::assertMatchesRegularExpression('/environment\s*\|\s*main\s*\|\s*env/', $display);
         self::assertMatchesRegularExpression('/repositories\.database\s*\|\s*database\s*\|\s*default/', $display);
         self::assertStringContainsString('Missing: aws_access_key_id (AWS_ACCESS_KEY_ID), aws_secret_access_key (AWS_SECRET_ACCESS_KEY), restic_password (RESTIC_PASSWORD)', $display);
-        self::assertStringContainsString("upsun variable:create --level project --name env:RESTIC_PASSWORD --sensitive true --visible-build false --visible-runtime true --value '<value>'", $display);
+        self::assertStringContainsString("upsun variable:create -e 'main' --level environment --inheritable false --name env:RESTIC_PASSWORD --sensitive true --visible-build false --visible-runtime true --value '<value>'", $display);
     }
 
     public function testMasksSecretsAndReportsMissingBinaries(): void

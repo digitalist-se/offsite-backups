@@ -11,6 +11,7 @@ use Drupal\KernelTests\KernelTestBase;
 use Drupal\offsite_backup\BackupStatus;
 use Drupal\offsite_backup\Controller\ReportController;
 use Drupal\offsite_backup\RepositoryInsight;
+use Drupal\Tests\user\Traits\UserCreationTrait;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
@@ -20,6 +21,8 @@ use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
  */
 #[RunTestsInSeparateProcesses]
 class OffsiteBackupReportTest extends KernelTestBase {
+
+  use UserCreationTrait;
 
   /**
    * {@inheritdoc}
@@ -32,6 +35,7 @@ class OffsiteBackupReportTest extends KernelTestBase {
   protected function setUp(): void {
     parent::setUp();
     $this->installConfig(['system']);
+    $this->installEntitySchema('user');
   }
 
   /**
@@ -92,7 +96,23 @@ class OffsiteBackupReportTest extends KernelTestBase {
     return (string) $this->render($build);
   }
 
+  public function testReportNeedsTheDedicatedPermission(): void {
+    // uid 1 bypasses access checks; take it so the accounts below are ordinary.
+    $this->createUser([], NULL, FALSE, ['uid' => 1]);
+    $accessManager = $this->container->get('access_manager');
+    self::assertFalse($accessManager->checkNamedRoute('offsite_backup.report', [], $this->createUser(['access site reports', 'administer site configuration'])));
+    self::assertTrue($accessManager->checkNamedRoute('offsite_backup.report', [], $this->createUser(['view offsite backups'])));
+  }
+
+  public function testStatusEntryLinksToTheReportOnlyWithAccess(): void {
+    $this->setUpCurrentUser([], ['administer site configuration']);
+    $description = (string) $this->runtimeRequirement()['description'];
+    self::assertStringNotContainsString('/admin/reports/offsite-backups', $description);
+    self::assertStringContainsString('View offsite backups', $description);
+  }
+
   public function testNoRunRecordedIsAWarning(): void {
+    $this->setUpCurrentUser([], ['view offsite backups']);
     self::assertSame('unknown', $this->backupStatus()->freshness()['level']);
     $requirement = $this->runtimeRequirement();
     self::assertSame(RequirementSeverity::Warning, $requirement['severity']);

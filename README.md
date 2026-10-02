@@ -142,7 +142,7 @@ Or with plain restic: `restic -r s3:https://<host>/<bucket>/<repository> snapsho
 
 Enable `offsite_backup` on the site (Drupal 11.2 or newer; the CLI itself has
 no Drupal requirement). It adds `/admin/reports/offsite-backups`
-(permission `access site reports`) laid out like the core status report: one
+(permission `view offsite backups`, restricted) laid out like the core status report: one
 entry per job with its outcome, age, details and next run; a repositories
 table with snapshot count, storage used in the bucket (compressed and
 deduplicated, from `restic stats`, cached for an hour), the restore window

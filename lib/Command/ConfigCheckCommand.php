@@ -57,9 +57,11 @@ final class ConfigCheckCommand extends BaseCommand
             $output->writeln('Missing: ' . implode(', ', array_map(static fn (string $k): string => "$k ({$settings[$k]['env']})", $resolved->missing)));
             $platform = $input->getOption('platform');
             $cli = is_string($platform) ? $platform : (is_file($resolved->projectRoot . '/.upsun/config.yaml') ? 'upsun' : 'platform');
+            // Environment level and not inheritable: project-level secrets would reach every preview environment.
+            $environment = is_string($resolved->values['environment']) && $resolved->values['environment'] !== '' ? $resolved->values['environment'] : 'main';
             foreach ($resolved->missing as $key) {
                 if ($settings[$key]['type'] === 'secret') {
-                    $output->writeln(sprintf("  %s variable:create --level project --name env:%s --sensitive true --visible-build false --visible-runtime true --value '<value>'", $cli, $settings[$key]['env']));
+                    $output->writeln(sprintf("  %s variable:create -e %s --level environment --inheritable false --name env:%s --sensitive true --visible-build false --visible-runtime true --value '<value>'", $cli, escapeshellarg($environment), $settings[$key]['env']));
                 } else {
                     $output->writeln(sprintf('  set %s in offsite-backup.yml (or %s)', $key, $settings[$key]['env']));
                 }

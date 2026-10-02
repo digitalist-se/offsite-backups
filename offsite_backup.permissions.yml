@@ -1,0 +1,4 @@
+view offsite backups:
+  title: 'View offsite backups'
+  description: 'The offsite backups report: runs, repositories, snapshots, schedule and non-secret settings. Loading it runs restic with the site''s storage credentials.'
+  restrict access: true

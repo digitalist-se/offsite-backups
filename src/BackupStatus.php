@@ -96,10 +96,13 @@ final class BackupStatus {
    */
   public function requirement(): array {
     $freshness = $this->freshness();
+    $report = Url::fromRoute('offsite_backup.report');
     return [
       'title' => new TranslatableMarkup('Offsite backups'),
       'value' => $freshness['level'] === 'unknown' ? new TranslatableMarkup('No offsite backup run recorded yet.') : $freshness['summary'],
-      'description' => new TranslatableMarkup('See the <a href=":url">offsite backups report</a>.', [':url' => Url::fromRoute('offsite_backup.report')->toString()]),
+      'description' => $report->access()
+        ? new TranslatableMarkup('See the <a href=":url">offsite backups report</a>.', [':url' => $report->toString()])
+        : new TranslatableMarkup('The offsite backups report needs the "View offsite backups" permission.'),
       'level' => $freshness['level'],
     ];
   }
