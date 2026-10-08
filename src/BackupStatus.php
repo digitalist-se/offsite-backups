@@ -32,6 +32,7 @@ final class BackupStatus {
   ];
 
   private const BACKUP_JOBS = ['db_backup', 'files_backup'];
+  private const INFO = 'info';
   private const DEFAULT_MAX_AGE = 93600;
 
   public function __construct(
@@ -68,6 +69,27 @@ final class BackupStatus {
   }
 
   /**
+   * Whether the gated commands run on this environment: its platform type is
+   * one of the configured environment_types. Copies of production (preview
+   * environments, stage, local sites) carry production's State but never
+   * refresh it, so their entries must not look like failures.
+   *
+   * @return array{runs: bool, type: string|null, enabled: list<string>}
+   */
+  public function placement(): array {
+    $env = Environment::fromGlobals();
+    $type = $env->get('PLATFORM_ENVIRONMENT_TYPE');
+    try {
+      $enabled = (new ConfigLoader(Application::detectProjectRoot(), $env))->resolve()->values['environment_types'];
+    }
+    catch (\Throwable) {
+      $enabled = Settings::all()['environment_types']['default'];
+    }
+    $enabled = array_values(array_map('strval', (array) $enabled));
+    return ['runs' => $type !== NULL && in_array($type, $enabled, TRUE), 'type' => $type, 'enabled' => $enabled];
+  }
+
+  /**
    * Freshness of the last successful database and files backups.
    *
    * @return array{level: string, db_age: int|null, files_age: int|null, summary: string}
@@ -97,12 +119,26 @@ final class BackupStatus {
   public function requirement(): array {
     $freshness = $this->freshness();
     $report = Url::fromRoute('offsite_backup.report');
+    $description = $report->access()
+      ? new TranslatableMarkup('See the <a href=":url">offsite backups report</a>.', [':url' => $report->toString()])
+      : new TranslatableMarkup('The offsite backups report needs the "View offsite backups" permission.');
+    $placement = $this->placement();
+    if (!$placement['runs']) {
+      return [
+        'title' => new TranslatableMarkup('Offsite backups'),
+        'value' => new TranslatableMarkup('Not run on this environment (type @type; runs on: @enabled). Last recorded production run: @summary', [
+          '@type' => $placement['type'] ?? 'unset',
+          '@enabled' => implode(', ', $placement['enabled']),
+          '@summary' => $freshness['level'] === 'unknown' ? 'none' : $freshness['summary'],
+        ]),
+        'description' => $description,
+        'level' => self::INFO,
+      ];
+    }
     return [
       'title' => new TranslatableMarkup('Offsite backups'),
       'value' => $freshness['level'] === 'unknown' ? new TranslatableMarkup('No offsite backup run recorded yet.') : $freshness['summary'],
-      'description' => $report->access()
-        ? new TranslatableMarkup('See the <a href=":url">offsite backups report</a>.', [':url' => $report->toString()])
-        : new TranslatableMarkup('The offsite backups report needs the "View offsite backups" permission.'),
+      'description' => $description,
       'level' => $freshness['level'],
     ];
   }
@@ -112,7 +148,9 @@ final class BackupStatus {
    *
    * A failed last run is an error and a job never run a warning. A backup
    * older than status_max_age is a warning, older than twice that an error;
-   * retention and check are weekly and do not go stale.
+   * retention and check are weekly and do not go stale. Where the commands do
+   * not run (see placement()) every entry is informational: the State was
+   * copied from production and describes production, not this environment.
    *
    * @return array<string, array{title: \Drupal\Core\StringTranslation\TranslatableMarkup, value: string, description: array<string, mixed>, severity: \Drupal\Core\Extension\Requirement\RequirementSeverity}>
    */
@@ -123,6 +161,7 @@ final class BackupStatus {
     foreach ($this->schedule() as $scheduled) {
       $next[$scheduled->job] = $scheduled->next;
     }
+    $placement = $this->placement();
     $entries = [];
     foreach (self::JOBS as $job => $label) {
       $run = $runs[$job];
@@ -142,6 +181,10 @@ final class BackupStatus {
         $value = sprintf('Succeeded %s ago in %s', $this->dateFormatter->formatInterval($age, 1), $duration);
       }
       $lines = [];
+      if (!$placement['runs']) {
+        $severity = RequirementSeverity::Info;
+        $lines[] = sprintf('Not run here (environment type %s; runs on %s). This is what production recorded.', $placement['type'] ?? 'unset', implode(', ', $placement['enabled']));
+      }
       if (is_string($run['error'] ?? NULL) && $run['error'] !== '') {
         $lines[] = $run['error'];
       }
@@ -153,7 +196,7 @@ final class BackupStatus {
         $lines[] = 'Finished ' . $run['finished'];
       }
       if (isset($next[$job])) {
-        $lines[] = 'Next run ' . $this->dateFormatter->format($next[$job]->getTimestamp(), 'custom', 'D Y-m-d H:i T');
+        $lines[] = 'Next run ' . $this->dateFormatter->format($next[$job]->getTimestamp(), 'custom', 'D Y-m-d H:i T') . ($placement['runs'] ? '' : ' (skips on this environment type)');
       }
       $entries[$job] = [
         'title' => new TranslatableMarkup($label),
