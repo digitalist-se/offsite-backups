@@ -44,7 +44,7 @@ final class RepositoryInsight {
       $config = $this->config();
       $restic = Restic::fromConfig($config, new ProcessRunner());
       $repo = $config->repositoryUrl($store);
-      $restic->requireRepository($repo);
+      $restic->requireRepository($repo, self::TIMEOUT);
       return ['snapshots' => $restic->snapshots($repo, ['host' => $config->resticHost()], self::TIMEOUT), 'error' => NULL];
     }, ['snapshots' => []]);
   }
@@ -119,7 +119,7 @@ final class RepositoryInsight {
       $config = $this->config();
       $restic = Restic::fromConfig($config, new ProcessRunner());
       $repo = $config->repositoryUrl($store);
-      $restic->requireRepository($repo);
+      $restic->requireRepository($repo, self::TIMEOUT);
       return ['stats' => $restic->stats($repo, self::TIMEOUT), 'error' => NULL];
     }, ['stats' => NULL]);
   }

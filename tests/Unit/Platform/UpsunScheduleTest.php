@@ -50,6 +50,17 @@ final class UpsunScheduleTest extends TestCase
         self::assertSame('2026-10-01 23:00 UTC', $jobs[0]->next?->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i T'));
     }
 
+    public function testApplicationTimezoneAppliesWhenTheCronHasNone(): void
+    {
+        // Upsun and Platform.sh set `timezone` on the app, not on each cron.
+        $application = self::APPLICATION;
+        $application['timezone'] = 'Europe/Stockholm';
+        $application['crons'] = ['db_backup' => ['spec' => '0 1 * * *', 'commands' => ['start' => 'vendor/bin/offsite-backup db:backup']]];
+        $now = new \DateTimeImmutable('2026-10-01 10:00:00', new \DateTimeZone('UTC'));
+        $jobs = UpsunSchedule::fromEnvironment(self::environment(base64_encode((string) json_encode($application))), $now);
+        self::assertSame('2026-10-01 23:00 UTC', $jobs[0]->next?->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i T'));
+    }
+
     public function testNothingWithoutThePlatformVariableOrWithGarbage(): void
     {
         $now = new \DateTimeImmutable('2026-10-01 10:00:00');

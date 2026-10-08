@@ -11,6 +11,10 @@ use Digitalist\OffsiteBackup\Process\ProcessRunner;
 /** Every restic invocation goes through here: argument arrays and an explicit environment. */
 final class Restic
 {
+    /** One JSON status line every 10 s: without it restic prints ten per second, terminal or not. */
+    public const PROGRESS_FPS = '0.1';
+    public const DEFAULT_BACKUP_TIMEOUT = 7200;
+
     public function __construct(
         private readonly ProcessRunner $runner,
         private readonly string $bin,
@@ -18,11 +22,13 @@ final class Restic
         private readonly string $accessKeyId,
         private readonly string $secretAccessKey,
         private readonly string $cacheDir,
+        private readonly string $retryLock = '',
+        private readonly int $backupTimeout = self::DEFAULT_BACKUP_TIMEOUT,
     ) {}
 
     public static function fromConfig(Config $config, ProcessRunner $runner): self
     {
-        return new self($runner, $config->resticBin, $config->resticPassword, $config->awsAccessKeyId, $config->awsSecretAccessKey, $config->resticCacheDir);
+        return new self($runner, $config->resticBin, $config->resticPassword, $config->awsAccessKeyId, $config->awsSecretAccessKey, $config->resticCacheDir, $config->resticRetryLock, $config->resticBackupTimeout);
     }
 
     /** @return array<string,string> */
@@ -37,6 +43,7 @@ final class Restic
             'AWS_ACCESS_KEY_ID' => $this->accessKeyId,
             'AWS_SECRET_ACCESS_KEY' => $this->secretAccessKey,
             'RESTIC_CACHE_DIR' => $this->cacheDir,
+            'RESTIC_PROGRESS_FPS' => (string) (getenv('RESTIC_PROGRESS_FPS') ?: self::PROGRESS_FPS),
         ];
     }
 
@@ -70,11 +77,11 @@ final class Restic
     /**
      * False when the repository, or the bucket holding it, does not exist.
      * restic retries a missing bucket with backoff for up to 15 minutes, so the
-     * probe is aborted as soon as restic reports it, and capped at one minute.
+     * probe is aborted as soon as restic reports it, and capped at $timeout seconds.
      */
-    public function repositoryExists(string $repositoryUrl): bool
+    public function repositoryExists(string $repositoryUrl, int $timeout = 60): bool
     {
-        $result = $this->tryRun($repositoryUrl, ['cat', 'config'], null, 60, static fn (string $stderr): bool => preg_match(self::MISSING_PATTERN, $stderr) === 1);
+        $result = $this->tryRun($repositoryUrl, ['cat', 'config'], null, $timeout, static fn (string $stderr): bool => preg_match(self::MISSING_PATTERN, $stderr) === 1);
         if ($result->ok()) {
             return true;
         }
@@ -85,9 +92,9 @@ final class Restic
     }
 
     /** Guard for every command but init: fail in seconds instead of letting restic retry for 15 minutes. */
-    public function requireRepository(string $repositoryUrl): void
+    public function requireRepository(string $repositoryUrl, int $timeout = 60): void
     {
-        if (!$this->repositoryExists($repositoryUrl)) {
+        if (!$this->repositoryExists($repositoryUrl, $timeout)) {
             throw new ResticException("Repository $repositoryUrl does not exist (bucket or repository missing); run `offsite-backup init`");
         }
     }
@@ -143,7 +150,7 @@ final class Restic
             $args[] = '--time';
             $args[] = $time;
         }
-        return BackupSummary::fromJsonLines($this->run($repositoryUrl, $args)->stdout);
+        return BackupSummary::fromJsonLines($this->run($repositoryUrl, $args, null, $this->backupTimeout)->stdout);
     }
 
     /**
@@ -156,7 +163,7 @@ final class Restic
         $timeArgs = $time !== null ? ' --time "$OB_TIME"' : '';
         $command = 'set -o pipefail; ' . $producer . ' | "$OB_RESTIC_BIN" backup --json --stdin --stdin-filename "$OB_NAME" --tag "$OB_TAG" --host "$OB_HOST"' . $timeArgs;
         $env = $producerEnv + $this->environment($repositoryUrl) + ['OB_RESTIC_BIN' => $this->bin, 'OB_NAME' => $stdinFilename, 'OB_TAG' => $tag, 'OB_HOST' => $host, 'OB_TIME' => (string) $time];
-        $result = $this->runner->run(['bash', '-c', $command], $env, null, 7200);
+        $result = $this->runner->run(['bash', '-c', $command], $env, null, $this->backupTimeout);
         if (!$result->ok()) {
             throw new ResticException(sprintf('restic backup --stdin failed (exit %d): %s', $result->exitCode, $result->tail(10)));
         }
@@ -174,7 +181,7 @@ final class Restic
         if ($dryRun) {
             $args[] = '--dry-run';
         }
-        $result = $this->run($repositoryUrl, $args, null, 600);
+        $result = $this->run($repositoryUrl, array_merge($args, $this->lockArgs()), null, 600);
         $data = json_decode(trim($result->stdout) === '' ? '[]' : $result->stdout, true);
         if (!is_array($data)) {
             throw new ResticException('restic forget returned unexpected output: ' . $result->tail(5));
@@ -188,12 +195,22 @@ final class Restic
 
     public function prune(string $repositoryUrl): void
     {
-        $this->run($repositoryUrl, ['prune']);
+        $this->run($repositoryUrl, array_merge(['prune'], $this->lockArgs()));
     }
 
     public function check(string $repositoryUrl, string $readDataSubset): void
     {
-        $this->run($repositoryUrl, ['check', '--read-data-subset', $readDataSubset]);
+        $this->run($repositoryUrl, array_merge(['check', '--read-data-subset', $readDataSubset], $this->lockArgs()));
+    }
+
+    /**
+     * forget, prune and check take restic's exclusive lock: with --retry-lock they wait for a
+     * backup still running instead of failing on the spot. Empty disables it (restic < 0.16).
+     * @return list<string>
+     */
+    private function lockArgs(): array
+    {
+        return $this->retryLock === '' ? [] : ['--retry-lock', $this->retryLock];
     }
 
     /** Storage actually used by the repository: compressed and deduplicated. */

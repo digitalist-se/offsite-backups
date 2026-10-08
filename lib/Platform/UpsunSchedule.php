@@ -9,7 +9,8 @@ use Digitalist\OffsiteBackup\Environment;
 
 /**
  * The offsite-backup crons of the running app, from the definition Upsun
- * (and Platform.sh) expose as base64 JSON in PLATFORM_APPLICATION.
+ * (and Platform.sh) expose as base64 JSON in PLATFORM_APPLICATION. Both
+ * platforms set the cron timezone at the app level; a per-cron key wins.
  */
 final class UpsunSchedule
 {
@@ -45,7 +46,7 @@ final class UpsunSchedule
                 continue;
             }
             $spec = (string) ($cron['spec'] ?? '');
-            $jobs[self::JOBS[$m[1]]] = new ScheduledJob((string) $name, self::JOBS[$m[1]], $spec, $command, self::next($spec, (string) ($cron['timezone'] ?? 'UTC'), $now));
+            $jobs[self::JOBS[$m[1]]] = new ScheduledJob((string) $name, self::JOBS[$m[1]], $spec, $command, self::next($spec, (string) ($cron['timezone'] ?? $application['timezone'] ?? 'UTC'), $now));
         }
         $ordered = [];
         foreach (self::JOBS as $job) {

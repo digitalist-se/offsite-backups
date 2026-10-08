@@ -33,6 +33,8 @@ final class Settings
             'restic.host' => ['env' => 'OFFSITE_BACKUP_RESTIC_HOST', 'default' => '{project}-{environment}', 'type' => 'string', 'required' => false],
             'restic.bin' => ['env' => 'OFFSITE_BACKUP_RESTIC_BIN', 'default' => 'restic', 'type' => 'string', 'required' => false],
             'restic.cache_dir' => ['env' => 'OFFSITE_BACKUP_RESTIC_CACHE_DIR', 'default' => '{local_dir}/restic-cache', 'type' => 'string', 'required' => false],
+            'restic.retry_lock' => ['env' => 'OFFSITE_BACKUP_RESTIC_RETRY_LOCK', 'default' => '30m', 'type' => 'string', 'required' => false],
+            'restic.backup_timeout' => ['env' => 'OFFSITE_BACKUP_RESTIC_BACKUP_TIMEOUT', 'default' => 7200, 'type' => 'int', 'required' => false],
             'database.dump_command' => ['env' => 'OFFSITE_BACKUP_DB_DUMP_COMMAND', 'default' => '{drush} sql:dump --gzip --result-file={file} --structure-tables-list={structure_tables}', 'type' => 'string', 'required' => false],
             'database.structure_tables' => ['env' => 'OFFSITE_BACKUP_DB_STRUCTURE_TABLES', 'default' => ['cache', 'cache_*'], 'type' => 'list', 'required' => false],
             'database.min_bytes' => ['env' => 'OFFSITE_BACKUP_DB_MIN_BYTES', 'default' => 1048576, 'type' => 'int', 'required' => false],
