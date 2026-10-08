@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Digitalist\OffsiteBackup\Command;
 
 use Digitalist\OffsiteBackup\Backup\BackupClass;
+use Digitalist\OffsiteBackup\Backup\Excludes;
 use Digitalist\OffsiteBackup\Config\Config;
 use Digitalist\OffsiteBackup\Report\Reporter;
 use Symfony\Component\Console\Input\InputInterface;
@@ -33,11 +34,13 @@ final class FilesBackupCommand extends BaseCommand
                 throw new \RuntimeException("Files path does not exist: $path");
             }
         }
+        $excludes = Excludes::expand($paths, $config->filesExcludes);
         $reporter->notice('Files backup started. repo={repo} paths={paths} tag={tag}', ['repo' => $repo, 'paths' => implode(',', $paths), 'tag' => $class]);
+        $reporter->notice('Excluding {n} pattern(s): {patterns}', ['n' => count($excludes), 'patterns' => implode(' ', $excludes)]);
 
         $restic = $this->restic($config);
         $restic->requireRepository($repo);
-        $summary = $restic->backupPaths($repo, $paths, $config->filesExcludes, $class, $config->resticHost());
+        $summary = $restic->backupPaths($repo, $paths, $excludes, $class, $config->resticHost());
         $reporter->notice('Restic backup completed: snapshot {id} ({bytes} bytes processed)', ['id' => substr($summary->snapshotId, 0, 8), 'bytes' => $summary->totalBytesProcessed]);
 
         $snapshot = $restic->snapshots($repo, ['tag' => $class, 'host' => $config->resticHost(), 'latest' => 1])[0] ?? null;

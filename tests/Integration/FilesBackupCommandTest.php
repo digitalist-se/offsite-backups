@@ -17,6 +17,11 @@ final class FilesBackupCommandTest extends IntegrationTestCase
         file_put_contents($this->projectRoot . '/web/sites/default/files/keep.jpg', 'jpg');
         file_put_contents($this->projectRoot . '/web/sites/default/files/css/agg.css', 'css');
         file_put_contents($this->projectRoot . '/private/secret.pdf', 'pdf');
+        // Content that merely shares a name with the generated directories must stay in the backup.
+        mkdir($this->projectRoot . '/web/sites/default/files/2026-10/css', 0700, true);
+        mkdir($this->projectRoot . '/private/reports/logs', 0700, true);
+        file_put_contents($this->projectRoot . '/web/sites/default/files/2026-10/css/upload.css', 'uploaded');
+        file_put_contents($this->projectRoot . '/private/reports/logs/audit.log', 'content');
         $this->restic()->init($this->repositoryUrl('public-files'));
 
         $app = new Application($this->projectRoot, $this->environment(['OFFSITE_BACKUP_FILES_PATHS' => 'web/sites/default/files,private']));
@@ -33,6 +38,9 @@ final class FilesBackupCommandTest extends IntegrationTestCase
         self::assertFileExists($restore . $this->projectRoot . '/web/sites/default/files/keep.jpg');
         self::assertFileExists($restore . $this->projectRoot . '/private/secret.pdf');
         self::assertFileDoesNotExist($restore . $this->projectRoot . '/web/sites/default/files/css/agg.css');
+        self::assertFileExists($restore . $this->projectRoot . '/web/sites/default/files/2026-10/css/upload.css', 'default excludes are anchored to the configured paths');
+        self::assertFileExists($restore . $this->projectRoot . '/private/reports/logs/audit.log');
+        self::assertStringContainsString('Excluding 16 pattern(s): ' . $this->projectRoot . '/web/sites/default/files/css', $tester->getDisplay());
     }
 
     public function testMissingPathFails(): void

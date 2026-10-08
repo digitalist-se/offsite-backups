@@ -12,7 +12,8 @@ namespace Digitalist\OffsiteBackup\Config;
  */
 final class Settings
 {
-    public const DRUPAL_EXCLUDES = ['*/css', '*/js', '*/php', '*/styles', '*/tmp', '*/logs', '*/translations', '*/config_*'];
+    /** Anchored to each files path through {path}: the generated directories at its top level, nothing deeper. */
+    public const DRUPAL_EXCLUDES = ['{path}/css', '{path}/js', '{path}/php', '{path}/styles', '{path}/tmp', '{path}/logs', '{path}/translations', '{path}/config_*'];
 
     public const SECRET_KEYS = ['aws_access_key_id', 'aws_secret_access_key', 'restic_password', 'slack.webhook_url'];
 
