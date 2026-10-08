@@ -24,6 +24,7 @@ final class OffsiteBackupHooks {
     $entry = $this->status->requirement();
     $entry['severity'] = match ($entry['level']) {
       'ok' => RequirementSeverity::OK,
+      'info' => RequirementSeverity::Info,
       'error' => RequirementSeverity::Error,
       default => RequirementSeverity::Warning,
     };

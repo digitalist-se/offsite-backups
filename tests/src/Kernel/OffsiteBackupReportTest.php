@@ -36,6 +36,8 @@ class OffsiteBackupReportTest extends KernelTestBase {
     parent::setUp();
     $this->installConfig(['system']);
     $this->installEntitySchema('user');
+    // The entries are judged as on production unless a test says otherwise.
+    putenv('PLATFORM_ENVIRONMENT_TYPE=production');
   }
 
   /**
@@ -43,6 +45,7 @@ class OffsiteBackupReportTest extends KernelTestBase {
    */
   protected function tearDown(): void {
     putenv('PLATFORM_APPLICATION');
+    putenv('PLATFORM_ENVIRONMENT_TYPE');
     parent::tearDown();
   }
 
@@ -261,6 +264,37 @@ class OffsiteBackupReportTest extends KernelTestBase {
     $files = \Drupal::service('offsite_backup.repositories')->listing(Config::STORE_FILES);
     self::assertSame([], $files['rows']);
     self::assertIsString($files['error']);
+  }
+
+  public function testCopiesOfProductionGetInformationalEntries(): void {
+    putenv('PLATFORM_ENVIRONMENT_TYPE=development');
+    $max = $this->backupStatus()->maxAgeSeconds();
+    $this->seedRun('db_backup', 'success', 2 * $max + 3600, ['name' => '2026-09-30-site-main.sql', 'snapshot' => 'abcd1234']);
+    $this->seedRun('files_backup', 'failure', 600, [], 'restic exploded');
+    $this->seedPlatformApplication();
+
+    $placement = $this->backupStatus()->placement();
+    self::assertFalse($placement['runs']);
+    self::assertSame('development', $placement['type']);
+    self::assertSame(['production'], $placement['enabled']);
+    self::assertSame('error', $this->backupStatus()->freshness()['level'], 'the data itself is still judged');
+
+    $requirement = $this->runtimeRequirement();
+    self::assertSame(RequirementSeverity::Info, $requirement['severity']);
+    self::assertStringContainsString('development', (string) $requirement['value']);
+    self::assertStringContainsString('Database', (string) $requirement['value']);
+
+    $entries = $this->backupStatus()->entries();
+    foreach ($entries as $entry) {
+      self::assertSame(RequirementSeverity::Info, $entry['severity']);
+    }
+    $description = (string) $this->render($entries['db_backup']['description']);
+    self::assertStringContainsString('Not run here', $description);
+    self::assertStringContainsString('skips on this environment type', $description);
+    self::assertStringContainsString('restic exploded', (string) $this->render($entries['files_backup']['description']), 'production\'s error is still shown');
+
+    putenv('PLATFORM_ENVIRONMENT_TYPE=production');
+    self::assertSame(RequirementSeverity::Error, $this->runtimeRequirement()['severity']);
   }
 
 }

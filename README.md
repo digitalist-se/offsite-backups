@@ -165,6 +165,13 @@ State keys the CLI writes and lists snapshots through restic with the runtime
 environment, so it needs the secrets at runtime; without them it says so
 instead of failing.
 
+Where the gated commands skip, because the platform environment type is not in
+`environment_types` (preview environments, stage, a local copy of the
+production database), the status entry and the job rows are informational
+rather than warnings or errors: the State they read was copied from production
+and never refreshes there, so a red entry would describe production's past,
+not this environment.
+
 ## Local restore from ddev
 
 Two host-side scripts ship under `ddev/`. A site adds a three-line shim per
