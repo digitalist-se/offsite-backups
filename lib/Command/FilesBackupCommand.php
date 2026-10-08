@@ -26,7 +26,6 @@ final class FilesBackupCommand extends BaseCommand
     protected function runCommand(Config $config, Reporter $reporter, InputInterface $input, OutputInterface $output): int
     {
         $now = $this->now();
-        $class = BackupClass::forDate($now);
         $repo = $config->repositoryUrl(Config::STORE_FILES);
         $paths = array_map(static fn (string $p): string => rtrim($config->absolutePath($p), '/'), $config->filesPaths);
         foreach ($paths as $path) {
@@ -34,12 +33,16 @@ final class FilesBackupCommand extends BaseCommand
                 throw new \RuntimeException("Files path does not exist: $path");
             }
         }
-        $excludes = Excludes::expand($paths, $config->filesExcludes);
-        $reporter->notice('Files backup started. repo={repo} paths={paths} tag={tag}', ['repo' => $repo, 'paths' => implode(',', $paths), 'tag' => $class]);
-        $reporter->notice('Excluding {n} pattern(s): {patterns}', ['n' => count($excludes), 'patterns' => implode(' ', $excludes)]);
-
         $restic = $this->restic($config);
         $restic->requireRepository($repo);
+        $decision = BackupClass::decide($now, $restic->snapshots($repo, ['host' => $config->resticHost()]));
+        $class = $decision['class'];
+        $excludes = Excludes::expand($paths, $config->filesExcludes);
+        $reporter->notice('Files backup started. repo={repo} paths={paths} tag={tag}', ['repo' => $repo, 'paths' => implode(',', $paths), 'tag' => $class]);
+        if ($decision['reason'] !== null) {
+            $reporter->notice('Class promoted to {class}: {reason}', ['class' => $class, 'reason' => $decision['reason']]);
+        }
+        $reporter->notice('Excluding {n} pattern(s): {patterns}', ['n' => count($excludes), 'patterns' => implode(' ', $excludes)]);
         $summary = $restic->backupPaths($repo, $paths, $excludes, $class, $config->resticHost());
         $reporter->notice('Restic backup completed: snapshot {id} ({bytes} bytes processed)', ['id' => substr($summary->snapshotId, 0, 8), 'bytes' => $summary->totalBytesProcessed]);
 

@@ -93,8 +93,13 @@ the whole backup, and the tool keeps that output in memory until the summary.
 Exit codes: 0 success or skipped, 1 failure, 2 stale.
 
 Snapshots are tagged `daily`, `biweekly` (day 15) or `monthly` (day 01) from
-the date, and carry `--host {project}-{environment}`. Retention keeps the
-most recent N per class and site, as configured in `retention.*`.
+the date, and carry `--host {project}-{environment}`. A month that has no
+`monthly` snapshot yet gets one from the next successful run whatever the day,
+and from the 15th on a month without a `biweekly` snapshot gets one the same
+way, so a failed night on the 1st or the 15th costs a day, not the month's
+long-term snapshot; the run logs `Class promoted to …` when that happens.
+Retention keeps the most recent N per class and site, as configured in
+`retention.*`.
 
 ## Scheduling
 
