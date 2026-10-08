@@ -297,4 +297,17 @@ class OffsiteBackupReportTest extends KernelTestBase {
     self::assertSame(RequirementSeverity::Error, $this->runtimeRequirement()['severity']);
   }
 
+  public function testDetailsDescribeTheInventoryCompactly(): void {
+    $details = [
+      'name' => '2026-09-30-site-main.sql',
+      'inventory' => ['counts' => ['daily' => 7, 'biweekly' => 1, 'monthly' => 12], 'total' => 20, 'oldest' => '2025-10-01T01:00:00+00:00', 'recorded' => '2026-09-30T01:05:00+00:00', 'by' => 'db:backup', 'host' => 'site-main', 'alert' => NULL],
+    ];
+    self::assertSame("name='2026-09-30-site-main.sql', inventory=daily:7 biweekly:1 monthly:12 oldest:2025-10-01", BackupStatus::describeDetails(['details' => $details]));
+    $details['inventory']['alert'] = '2026-10-01T01:05:00+00:00 db:backup: monthly: 12 before, 11 now';
+    self::assertStringContainsString('ALERT:2026-10-01T01:05:00+00:00 db:backup: monthly: 12 before, 11 now', BackupStatus::describeDetails(['details' => $details]));
+
+    $this->seedRun('db_backup', 'success', 3600, $details);
+    self::assertStringContainsString('inventory=daily:7', (string) $this->render($this->backupStatus()->entries()['db_backup']['description']));
+  }
+
 }

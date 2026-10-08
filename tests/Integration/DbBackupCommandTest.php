@@ -137,4 +137,48 @@ final class DbBackupCommandTest extends IntegrationTestCase
         $expected = $day === 1 ? 'monthly' : ($day >= 15 ? 'biweekly' : 'daily');
         self::assertSame([$expected], $second->tags);
     }
+
+    public function testSnapshotsRemovedOutsideTheToolFailEveryRunUntilAPruneResetsTheBaseline(): void
+    {
+        $db = $this->repositoryUrl('database');
+        $tester = new CommandTester($this->app()->find('db:backup'));
+        self::assertSame(0, $tester->execute([]), $tester->getDisplay());
+        self::assertStringContainsString('Snapshot inventory: ', $tester->getDisplay());
+        self::assertFileExists($this->projectRoot . '/backups/inventory-db.json');
+        self::assertSame(0, $tester->execute([]), $tester->getDisplay());
+        $two = $this->restic()->snapshots($db, ['host' => 'proj-main']);
+        self::assertCount(2, $two);
+
+        // Someone forgets the newest of the two behind the tool's back: not the oldest, so only one class count changes.
+        $forget = $this->restic()->tryRun($db, ['forget', $two[0]->id], null, 120);
+        self::assertTrue($forget->ok(), $forget->stderr);
+
+        self::assertSame(1, $tester->execute([]), $tester->getDisplay());
+        self::assertStringContainsString('Snapshots vanished', $tester->getDisplay());
+        self::assertMatchesRegularExpression('/(daily|biweekly|monthly): (2 before, 1 now|1 before, 0 now)/', $tester->getDisplay());
+        self::assertStringNotContainsString('Backup process finished successfully', $tester->getDisplay());
+        self::assertCount(2, $this->restic()->snapshots($db, ['host' => 'proj-main']), 'the new snapshot was still made');
+        $records = $this->drushRecords();
+        self::assertSame('failure', end($records)['stdin']['state']['offsite_backup.run.db_backup']['outcome']);
+
+        // The repository is back at two, but the loss stays on record: the next night fails as well.
+        self::assertSame(1, $tester->execute([]), $tester->getDisplay());
+        self::assertStringContainsString('Snapshot loss not acknowledged', $tester->getDisplay());
+        self::assertStringNotContainsString('Backup process finished successfully', $tester->getDisplay());
+        self::assertCount(3, $this->restic()->snapshots($db, ['host' => 'proj-main']));
+        $status = new CommandTester($this->app()->find('status'));
+        self::assertSame(2, $status->execute([]));
+        self::assertStringContainsString('snapshot loss not acknowledged', $status->getDisplay());
+
+        // A real prune resets the baseline; the night after is fine again.
+        $prune = new CommandTester($this->app()->find('prune'));
+        self::assertSame(0, $prune->execute(['store' => 'db']), $prune->getDisplay());
+        self::assertStringContainsString('Inventory baseline reset for db', $prune->getDisplay());
+        self::assertSame(0, $tester->execute([]), $tester->getDisplay());
+        // status still exits 2 here because this test never initialises the files repository; the db lines are what matters.
+        $status->execute([]);
+        self::assertStringNotContainsString('vanished', $status->getDisplay());
+        self::assertStringNotContainsString('not acknowledged', $status->getDisplay());
+        self::assertMatchesRegularExpression('/^db inventory: .* \(baseline .* by db:backup\)$/m', $status->getDisplay());
+    }
 }
