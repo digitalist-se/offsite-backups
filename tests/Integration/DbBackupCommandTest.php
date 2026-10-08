@@ -119,4 +119,22 @@ final class DbBackupCommandTest extends IntegrationTestCase
         self::assertFileDoesNotExist($old);
         self::assertStringContainsString('Removed stale local file', $tester->getDisplay());
     }
+    public function testTheFirstRunOfAMonthIsPromotedToMonthly(): void
+    {
+        $db = $this->repositoryUrl('database');
+        $tester = new CommandTester($this->app()->find('db:backup'));
+        self::assertSame(0, $tester->execute([]), $tester->getDisplay());
+        $first = $this->restic()->snapshots($db, ['host' => 'proj-main']);
+        self::assertSame(['monthly'], $first[0]->tags, 'an empty repository has no monthly for this month');
+        $day = (int) (new \DateTimeImmutable())->format('d');
+        if ($day !== 1) {
+            self::assertStringContainsString('Class promoted to monthly: no monthly snapshot for', $tester->getDisplay());
+        }
+
+        self::assertSame(0, $tester->execute([]), $tester->getDisplay());
+        $second = $this->restic()->snapshots($db, ['host' => 'proj-main'])[0];
+        // Day 1: monthly again by date. From the 15th on: the month has no biweekly yet, so that is caught up. Otherwise daily.
+        $expected = $day === 1 ? 'monthly' : ($day >= 15 ? 'biweekly' : 'daily');
+        self::assertSame([$expected], $second->tags);
+    }
 }

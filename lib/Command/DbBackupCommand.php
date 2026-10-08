@@ -27,7 +27,6 @@ final class DbBackupCommand extends BaseCommand
     protected function runCommand(Config $config, Reporter $reporter, InputInterface $input, OutputInterface $output): int
     {
         $now = $this->now();
-        $class = BackupClass::forDate($now);
         $name = BackupName::dump($now, $config->project, $config->environment);
         // {file} is the path without ".gz": `drush sql:dump --gzip` appends the suffix itself.
         $dumpTarget = $config->localDir . '/' . $name;
@@ -35,9 +34,14 @@ final class DbBackupCommand extends BaseCommand
         $repo = $config->repositoryUrl(Config::STORE_DB);
         $restic = $this->restic($config);
         $restic->requireRepository($repo);
+        $decision = BackupClass::decide($now, $restic->snapshots($repo, ['host' => $config->resticHost()]));
+        $class = $decision['class'];
 
         $this->prepareLocalDir($config->localDir, $reporter);
         $reporter->notice('Backup started. file={file} tag={tag} project={project} env={env}', ['file' => $localFile, 'tag' => $class, 'project' => $config->project, 'env' => $config->environment]);
+        if ($decision['reason'] !== null) {
+            $reporter->notice('Class promoted to {class}: {reason}', ['class' => $class, 'reason' => $decision['reason']]);
+        }
 
         try {
             $reporter->notice('DB dump started: {file}', ['file' => $localFile]);
