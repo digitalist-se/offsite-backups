@@ -28,7 +28,8 @@ final class DbDownloadCommand extends BaseCommand
         $restic = $this->restic($config);
         $restic->requireRepository($repo);
         $snapshot = SnapshotResolver::resolve($restic, $repo, $config->resticHost(), (string) $input->getArgument('snapshot'));
-        $name = ltrim($snapshot->paths[0] ?? '', '/');
+        // The dump name only: a path read from the repository must not steer where the file lands.
+        $name = basename(ltrim($snapshot->paths[0] ?? '', '/'));
         if ($name === '') {
             throw new \RuntimeException("Snapshot {$snapshot->shortId} has no recorded path");
         }

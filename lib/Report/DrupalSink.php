@@ -10,11 +10,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * Hands log lines and the run result to Drupal through one `drush php:eval`
  * per flush, JSON on stdin. Best effort: a failure prints a warning and never
- * changes the run outcome.
+ * changes the run outcome. The text travels as a placeholder, never as the
+ * message itself: dblog then escapes it and locale does not collect it as a
+ * translatable string. Syslog still prints the plain line.
  */
 final class DrupalSink implements Sink
 {
-    public const BRIDGE = '$in = json_decode(file_get_contents("php://stdin"), TRUE); foreach ($in["log"] ?? [] as $m) { \Drupal::logger($m["channel"])->log($m["level"], $m["message"]); } foreach ($in["state"] ?? [] as $k => $v) { \Drupal::state()->set($k, $v); }';
+    public const BRIDGE = '$in = json_decode(file_get_contents("php://stdin"), TRUE); foreach ($in["log"] ?? [] as $m) { \Drupal::logger($m["channel"])->log($m["level"], "@message", ["@message" => $m["message"]]); } foreach ($in["state"] ?? [] as $k => $v) { \Drupal::state()->set($k, $v); }';
 
     private int $flushed = 0;
 

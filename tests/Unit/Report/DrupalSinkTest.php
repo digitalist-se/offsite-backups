@@ -58,6 +58,7 @@ final class DrupalSinkTest extends TestCase
         self::assertCount(3, $records);
         self::assertSame(['--root=/tmp/web', 'php:eval'], array_slice($records[0]['argv'], 0, 2));
         self::assertStringContainsString('\Drupal::logger', $records[0]['argv'][2]);
+        self::assertStringContainsString('"@message"', $records[0]['argv'][2], 'the text is a placeholder value, never the format string');
         self::assertSame([['channel' => 'offsite-backup', 'level' => 'notice', 'message' => 'Backup started']], $records[0]['stdin']['log']);
         self::assertArrayNotHasKey('state', $records[0]['stdin']);
         self::assertSame(['progress', 'boom'], array_column($records[1]['stdin']['log'], 'message'));

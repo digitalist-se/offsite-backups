@@ -49,6 +49,7 @@ expressed in the file (for example `database: {structure_tables: []}`).
 | `environment_types` | `PLATFORM_ENVIRONMENT_TYPE` values on which `db:backup`, `files:backup`, `prune` and `check` run; elsewhere they print `skipped` and exit 0 |
 | `repositories.database`, `repositories.files` | restic repository paths inside the bucket |
 | `restic.host`, `restic.bin`, `restic.cache_dir` | snapshot host name (defaults to `{project}-{environment}`), binary, cache directory |
+| `restic.retry_lock`, `restic.backup_timeout` | how long `prune` and `check` wait for a repository another job still holds (`30m`; needs restic 0.16+, `''` disables); seconds one `restic backup` may take (`7200`; raise it for the first run on a large files tree) |
 | `database.dump_command` | dump template; `{file}` has no `.gz`, the command must write `{file}.gz` (Drush does with `--gzip`) |
 | `database.structure_tables`, `database.min_bytes` | tables dumped as schema only; smallest acceptable dump |
 | `drush.bin`, `drush.root`, `local_dir` | Drush binary and root; writable directory for the dump, locks and cache |
@@ -77,6 +78,10 @@ expressed in the file (for example `database: {structure_tables: []}`).
 Global options: `--force` (ignore the environment gate), `--config=PATH`,
 `--env-stdin` (JSON object of environment overrides on stdin, for scripts
 that must not put secrets in arguments).
+
+restic runs with `RESTIC_PROGRESS_FPS=0.1` unless the variable is already
+set: with `--json` it would otherwise print ten status lines per second for
+the whole backup, and the tool keeps that output in memory until the summary.
 
 Exit codes: 0 success or skipped, 1 failure, 2 stale.
 
@@ -135,6 +140,9 @@ vendor/bin/offsite-backup db:download latest --to=sql          # writes sql/<dat
 vendor/bin/offsite-backup files:restore --target=web/sites/default/files
 ```
 
+Download into a directory of your own, not into `local_dir`: `db:backup`
+sweeps it and removes any `.sql.gz` older than a day.
+
 Or with plain restic: `restic -r s3:https://<host>/<bucket>/<repository> snapshots`,
 `restic -r … dump latest /<name>.sql | gzip > dump.sql.gz`.
 
@@ -175,8 +183,9 @@ newest is used), downloads the chosen one into `sql/<YYYYMMDD>-<label>.sql.gz`
 and points `sql/db_latest.sql.gz` at it. `update-files-latest.sh` restores a
 files snapshot into a directory. Both read the credentials from a Bitwarden
 item (`bw unlock` first) whose custom fields are named like the variables:
-`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `RESTIC_PASSWORD`; every field
-starting with `AWS_`, `RESTIC_` or `OFFSITE_BACKUP_` is forwarded. Secrets go
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `RESTIC_PASSWORD`; `AWS_HOST`,
+`AWS_BUCKET` and the two `OFFSITE_BACKUP_SLACK_*` fields are forwarded too,
+nothing else, so a vault item cannot pick binaries or commands. Secrets go
 to the container on stdin and never touch the disk. The web container needs
 `restic` (`webimage_extra_packages: [restic]`) and the host needs `bw` and `jq`.
 

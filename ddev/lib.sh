@@ -14,8 +14,10 @@ ob_require_tools() {
   fi
 }
 
-# Prints a JSON object built from the Bitwarden item's custom fields named
-# AWS_*, RESTIC_* or OFFSITE_BACKUP_*, plus NAME=VALUE overrides given as
+# Prints a JSON object built from the Bitwarden item's custom fields that hold
+# connection data or secrets (AWS_HOST, AWS_BUCKET, AWS_ACCESS_KEY_ID,
+# AWS_SECRET_ACCESS_KEY, RESTIC_PASSWORD, OFFSITE_BACKUP_SLACK_*): a vault item
+# must not be able to pick binaries or commands. Plus NAME=VALUE overrides given as
 # arguments and OFFSITE_BACKUP_CONFIG when set in the environment. Secrets stay
 # in memory; nothing is written to disk.
 ob_env_json() {
@@ -24,7 +26,7 @@ ob_env_json() {
   status=$(bw status 2>/dev/null | jq -r '.status' 2>/dev/null || echo unknown)
   [ "$status" = "unlocked" ] || ob_die "Bitwarden vault is not unlocked. Run: bw unlock (and export BW_SESSION)"
   raw=$(bw get item "$item" 2>/dev/null) || ob_die "Could not fetch Bitwarden item '$item'. Try: bw sync"
-  json=$(printf '%s' "$raw" | jq -c '(.fields // []) | map(select(.name | test("^(AWS_|RESTIC_|OFFSITE_BACKUP_)"))) | map({(.name): (.value // "")}) | add // {}')
+  json=$(printf '%s' "$raw" | jq -c '(.fields // []) | map(select(.name | test("^(AWS_HOST|AWS_BUCKET|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|RESTIC_PASSWORD|OFFSITE_BACKUP_SLACK_WEBHOOK_URL|OFFSITE_BACKUP_SLACK_CHANNEL)$"))) | map({(.name): (.value // "")}) | add // {}')
   local kv
   for kv in "$@"; do
     json=$(printf '%s' "$json" | jq -c --arg k "${kv%%=*}" --arg v "${kv#*=}" '. + {($k): $v}')

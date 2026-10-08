@@ -40,13 +40,15 @@ final class ConfigLoaderTest extends TestCase
         self::assertSame(7, $config->keepDaily);
         self::assertSame($this->root . '/backups', $config->localDir);
         self::assertSame($this->root . '/backups/restic-cache', $config->resticCacheDir);
+        self::assertSame('30m', $config->resticRetryLock);
+        self::assertSame(7200, $config->resticBackupTimeout);
         self::assertTrue($config->logDrupal);
         self::assertNull($config->slackWebhookUrl);
     }
 
     public function testFileValuesOverrideDefaultsAndEnvOverridesFile(): void
     {
-        file_put_contents($this->root . '/offsite-backup.yml', "project: site\ns3:\n  host: backups.example.com/\n  bucket: site\nfiles:\n  paths: [web/sites/default/files, private]\nretention: {daily: 3}\nrestic:\n  bin: /app/.global/bin/restic\n");
+        file_put_contents($this->root . '/offsite-backup.yml', "project: site\ns3:\n  host: backups.example.com/\n  bucket: site\nfiles:\n  paths: [web/sites/default/files, private]\nretention: {daily: 3}\nrestic:\n  bin: /app/.global/bin/restic\n  retry_lock: ''\n  backup_timeout: 600\n");
         $env = new Environment($this->secrets() + ['PLATFORM_ENVIRONMENT' => 'main', 'OFFSITE_BACKUP_KEEP_DAILY' => '9']);
         $loader = new ConfigLoader($this->root, $env);
         $config = $loader->load();
@@ -57,6 +59,8 @@ final class ConfigLoaderTest extends TestCase
         self::assertSame(['web/sites/default/files', 'private'], $config->filesPaths);
         self::assertSame(9, $config->keepDaily, 'env wins over file');
         self::assertSame('/app/.global/bin/restic', $config->resticBin);
+        self::assertSame('', $config->resticRetryLock, 'an empty file value disables --retry-lock');
+        self::assertSame(600, $config->resticBackupTimeout);
         self::assertSame('file', $resolved->sources['project']);
         self::assertSame('env', $resolved->sources['retention.daily']);
         self::assertSame('default', $resolved->sources['retention.monthly']);
