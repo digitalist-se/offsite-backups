@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Digitalist\OffsiteBackup\Command;
 
 use Digitalist\OffsiteBackup\Backup\BackupClass;
+use Digitalist\OffsiteBackup\Backup\Inventory;
+use Digitalist\OffsiteBackup\Backup\InventoryStore;
 use Digitalist\OffsiteBackup\Config\Config;
 use Digitalist\OffsiteBackup\Report\Reporter;
 use Digitalist\OffsiteBackup\Restic\ResticException;
@@ -36,6 +38,7 @@ final class PruneCommand extends BaseCommand
         $keep = $config->keepCounts();
         $forgotten = [Config::STORE_DB => null, Config::STORE_FILES => null];
         $failures = [];
+        $inventories = new InventoryStore($config->localDir);
 
         foreach ($stores as $store) {
             $repo = $config->repositoryUrl($store);
@@ -51,6 +54,18 @@ final class PruneCommand extends BaseCommand
                 if ($dryRun) {
                     $reporter->notice('Dry run: prune skipped for {repo}', ['repo' => $repo]);
                 } else {
+                    // The forget loop above is the one place the tool removes snapshots, so what the
+                    // repository holds now is the new baseline for the vanished-snapshot check. It is
+                    // recorded before prune: a prune that fails must not read as a loss tomorrow.
+                    $inventory = Inventory::of($restic->snapshots($repo, ['host' => $config->resticHost()]), $this->now(), 'prune', $config->resticHost());
+                    try {
+                        $inventories->write($store, $inventory);
+                        $reporter->notice('Inventory baseline reset for {store}: {inventory}', ['store' => $store, 'inventory' => $inventory->describe()]);
+                    } catch (\RuntimeException $e) {
+                        // A local disk problem must not skip this store's prune or the other store's retention.
+                        $failures[] = "$store: inventory baseline not written: " . $e->getMessage();
+                        $reporter->error('Inventory baseline not written for {store}: {error}', ['store' => $store, 'error' => $e->getMessage()]);
+                    }
                     $restic->prune($repo);
                     $reporter->notice('Pruned {repo}', ['repo' => $repo]);
                 }

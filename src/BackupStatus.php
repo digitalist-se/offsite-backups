@@ -255,6 +255,14 @@ final class BackupStatus {
       if ($value === NULL) {
         continue;
       }
+      if ($key === 'inventory' && is_array($value)) {
+        $counts = is_array($value['counts'] ?? NULL) ? $value['counts'] : [];
+        $summary = implode(' ', array_map(static fn ($class, $n): string => $class . ':' . (is_scalar($n) ? (string) $n : '?'), array_keys($counts), $counts));
+        $oldest = is_string($value['oldest'] ?? NULL) ? ' oldest:' . substr($value['oldest'], 0, 10) : '';
+        $alert = is_string($value['alert'] ?? NULL) && $value['alert'] !== '' ? ' ALERT:' . $value['alert'] : '';
+        $parts[] = 'inventory=' . $summary . $oldest . $alert;
+        continue;
+      }
       $parts[] = $key . '=' . (is_scalar($value) ? var_export($value, TRUE) : json_encode($value));
     }
     return implode(', ', $parts);

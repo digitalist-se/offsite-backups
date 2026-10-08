@@ -7,6 +7,8 @@ namespace Digitalist\OffsiteBackup\Command;
 use Digitalist\OffsiteBackup\Backup\BackupClass;
 use Digitalist\OffsiteBackup\Backup\BackupName;
 use Digitalist\OffsiteBackup\Backup\DumpChecker;
+use Digitalist\OffsiteBackup\Backup\Inventory;
+use Digitalist\OffsiteBackup\Backup\InventoryStore;
 use Digitalist\OffsiteBackup\Config\Config;
 use Digitalist\OffsiteBackup\Report\Reporter;
 use Symfony\Component\Console\Input\InputInterface;
@@ -34,13 +36,25 @@ final class DbBackupCommand extends BaseCommand
         $repo = $config->repositoryUrl(Config::STORE_DB);
         $restic = $this->restic($config);
         $restic->requireRepository($repo);
-        $decision = BackupClass::decide($now, $restic->snapshots($repo, ['host' => $config->resticHost()]));
+        $host = $config->resticHost();
+        $inventories = new InventoryStore($config->localDir);
+        // One listing serves the class decision and the vanished-snapshot check.
+        $before = $restic->snapshots($repo, ['host' => $host]);
+        $decision = BackupClass::decide($now, $before);
         $class = $decision['class'];
+        $baseline = $inventories->read(Config::STORE_DB, $host);
+        $vanished = $baseline === null ? [] : Inventory::of($before, $now, 'db:backup', $host)->regressionsSince($baseline);
+        $unacknowledged = $baseline?->alert;
 
         $this->prepareLocalDir($config->localDir, $reporter);
         $reporter->notice('Backup started. file={file} tag={tag} project={project} env={env}', ['file' => $localFile, 'tag' => $class, 'project' => $config->project, 'env' => $config->environment]);
         if ($decision['reason'] !== null) {
             $reporter->notice('Class promoted to {class}: {reason}', ['class' => $class, 'reason' => $decision['reason']]);
+        }
+        if ($baseline !== null && $vanished !== []) {
+            $reporter->error('Snapshots vanished since {when} ({by}): {what}. Backing up anyway; the run is reported as failed.', ['when' => $baseline->recordedAt->format(DATE_ATOM), 'by' => $baseline->recordedBy, 'what' => implode('; ', $vanished)]);
+        } elseif ($unacknowledged !== null) {
+            $reporter->error('Snapshot loss not acknowledged yet ({alert}). Backing up anyway; the run is reported as failed until `prune` resets the baseline or {file} is removed.', ['alert' => $unacknowledged, 'file' => $inventories->path(Config::STORE_DB)]);
         }
 
         try {
@@ -72,6 +86,7 @@ final class DbBackupCommand extends BaseCommand
             }
             $reporter->notice('Verification succeeded: snapshot {short} created {time} path {path}', ['short' => $snapshot->shortId, 'time' => $snapshot->time->format(DATE_ATOM), 'path' => $snapshot->paths[0]]);
 
+            $inventory = Inventory::of([...$before, $snapshot], $now, 'db:backup', $host);
             $reporter->report()->details = [
                 'name' => $name,
                 'class' => $class,
@@ -81,7 +96,18 @@ final class DbBackupCommand extends BaseCommand
                 'compressed_bytes' => $check->compressedBytes,
                 'tables' => $check->createTableCount,
                 'repository' => $repo,
+                'inventory' => $inventory->toArray(),
             ];
+            if ($baseline !== null && $vanished !== []) {
+                // Keep the baseline the loss was measured against and record the loss on it: every run fails until a prune resets it.
+                $inventories->write(Config::STORE_DB, $baseline->withAlert($baseline->alert ?? sprintf('%s db:backup: %s', $now->format(DATE_ATOM), implode('; ', $vanished))));
+                throw new \RuntimeException(sprintf('Snapshots vanished from %s since %s: %s. Snapshot %s was still created. The run keeps failing until `prune` resets the baseline or %s is removed', $repo, $baseline->recordedAt->format(DATE_ATOM), implode('; ', $vanished), $snapshot->shortId, $inventories->path(Config::STORE_DB)));
+            }
+            if ($unacknowledged !== null) {
+                throw new \RuntimeException(sprintf('Snapshot loss not acknowledged: %s. Snapshot %s was still created. Run `prune` to reset the baseline or remove %s', $unacknowledged, $snapshot->shortId, $inventories->path(Config::STORE_DB)));
+            }
+            $inventories->write(Config::STORE_DB, $inventory);
+            $reporter->notice('Snapshot inventory: {inventory}', ['inventory' => $inventory->describe()]);
             $reporter->notice('Backup process finished successfully: {name} (snapshot {short})', ['name' => $name, 'short' => $snapshot->shortId]);
             return 0;
         } finally {

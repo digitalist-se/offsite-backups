@@ -143,6 +143,22 @@ match them:
 The last run of each job is stored in Drupal State under
 `offsite_backup.run.<job>` for the report module.
 
+### Snapshot inventory
+
+After each successful `db:backup`, `files:backup` and `prune`, the tool records
+what the repository holds for this host, snapshots per class and the oldest
+one, in `<local_dir>/inventory-<store>.json`. The next backup compares: fewer
+snapshots in a class, or an oldest snapshot younger than before, without a
+`prune` in between, means snapshots were removed outside the tool. The backup
+still runs, then the run is reported as failed (Slack, watchdog error, no
+success line, so the absence alerts fire too), and the loss is recorded in the
+file: every following backup and `status` (exit 2) keep failing until a real
+`prune` resets the baseline, right after its own `forget`, or until the file is
+deleted; `prune --dry-run` does not touch it. The file lives on the production
+mount with the rest of `local_dir`, so a fresh mount or a new environment
+starts without a baseline, and a baseline recorded for another restic host
+(after renaming `environment` or `restic.host`) is ignored.
+
 ## Restore
 
 ```bash
