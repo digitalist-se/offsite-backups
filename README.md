@@ -53,11 +53,18 @@ expressed in the file (for example `database: {structure_tables: []}`).
 | `database.dump_command` | dump template; `{file}` has no `.gz`, the command must write `{file}.gz` (Drush does with `--gzip`) |
 | `database.structure_tables`, `database.min_bytes` | tables dumped as schema only; smallest acceptable dump |
 | `drush.bin`, `drush.root`, `local_dir` | Drush binary and root; writable directory for the dump, locks and cache |
-| `files.paths`, `files.excludes` | directories to snapshot and exclude patterns |
+| `files.paths`, `files.excludes` | directories to snapshot; exclude patterns, where `{path}` stands for each of the paths (see below) |
 | `retention.daily`, `retention.biweekly`, `retention.monthly` | snapshots kept per class (see below) |
 | `check_subset`, `status_max_age` | data subset read by `check`; staleness threshold for `status` |
 | `log.channel`, `log.drupal` | watchdog channel; set `false` to skip the Drupal hand-over |
 | `slack.channel` | Slack channel for failure messages; unset uses the webhook's default |
+
+An exclude containing `{path}` is expanded for every entry of `files.paths`
+and anchored there: the default `{path}/css` skips `web/sites/default/files/css`
+and nothing else. An entry without `{path}` goes to restic verbatim, and restic
+matches a pattern without a leading `/` at any depth, so `**/css` (or the older
+`*/css`) skips every directory called `css` anywhere below the paths, uploaded
+content included. The run logs the effective patterns.
 
 ## Commands
 

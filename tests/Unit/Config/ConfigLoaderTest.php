@@ -37,6 +37,7 @@ final class ConfigLoaderTest extends TestCase
         self::assertSame('s3:https://backups.example.com/site/public-files', $config->repositoryUrl('files'));
         self::assertSame(['production'], $config->environmentTypes);
         self::assertSame(['cache', 'cache_*'], $config->dbStructureTables);
+        self::assertSame('{path}/css', $config->filesExcludes[0], 'the default excludes are anchored to each files path');
         self::assertSame(7, $config->keepDaily);
         self::assertSame($this->root . '/backups', $config->localDir);
         self::assertSame($this->root . '/backups/restic-cache', $config->resticCacheDir);
